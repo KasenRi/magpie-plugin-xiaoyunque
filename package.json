@@ -1,0 +1,46 @@
+{
+  "name": "opencode-xiaoyunque",
+  "version": "0.1.0",
+  "description": "Unofficial Magpie / OpenCode tools plugin for XiaoYunQue (小云雀 / Pippit CN, Seedance 2.5 & 2.0 video generation)",
+  "type": "module",
+  "main": "./index.mjs",
+  "files": [
+    "index.mjs",
+    "src",
+    "docs/API.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "keywords": [
+    "magpie",
+    "magpie-tools",
+    "magpie-plugin",
+    "opencode",
+    "opencode-plugin",
+    "mcp",
+    "xiaoyunque",
+    "pippit",
+    "seedance",
+    "video-generation"
+  ],
+  "magpie": {
+    "name": "小云雀 视频生成",
+    "summary": {
+      "en": "Generate AI videos with XiaoYunQue / Pippit CN (Seedance 2.5 / 2.0 t2v, first-last frame, multi-modal reference-to-video, video edit, and video extend) as MCP tools",
+      "zh": "通过小云雀（XiaoYunQue / Pippit CN）官方 Access Key 或网页端 Cookie 调用 Seedance 2.5 / 2.0 文生视频、首尾帧、多模态参考生视频、视频编辑与视频延长 MCP 工具"
+    }
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test tests/",
+    "check": "node --check index.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KasenRi/magpie-plugin-xiaoyunque.git"
+  },
+  "homepage": "https://github.com/KasenRi/magpie-plugin-xiaoyunque#readme"
+}

@@ -22,30 +22,32 @@
 
 ### ✨ 核心功能
 
+- **Magpie「模型 → 供应商」多账号管理（v0.2.0 新增）**：原生接入 Magpie Web 端 **模型 → 供应商 → `小云雀 (XiaoYunQue)`** 页面（声明 0 个模型，不干扰聊天与 `/v1/videos` 路由），支持可视化添加多个 Access Key 或网页端 Cookie 账号、置顶切换默认账号、查看积分余额，并通过 `account` 参数按需指定账号及自动绑定 `task_id → 槽位`。
 - **官方 Access-Key Skill API 原生直连（纯 JS，无 CLI 子进程）**：直接请求 `https://xyq.jianying.com/api/biz/v1/skill/*`（`get_credit_balance`、`get_available_model_list`、`upload_file`、`submit_run`、`get_thread`），完美适配无头 Linux 服务器。
-- **全系列 Seedance 2.5 / 2.0 / 1.0 模型支持**：支持 `Seedance_2.5`、`Seedance_2.5_draft`（两阶段样片转正片）、`seedance2.0_vision`（别名 `seedance_2.0`）、`seedance2.0_fast_vision`（别名 `seedance_2.0_fast`）、`Seedance_2.0_mini`、`Seedance_2.0_mini_lite`（2.0 Mini 体验版）、`seedance2.0_direct`、`seedance2.0_fast_direct`、`Seedance_1.0_fast`，并支持平台非 Seedance 模型（`wan3.0`、`happyhorse-1.1`）。
-- **完整参数与多种创作模式**：支持画面比例（`aspect_ratio`）、画质/分辨率（`resolution`：`480p`/`720p`/`1080p`/`4k`）、时长（`duration`）、音频提示词控制（`audio`）、输出格式校验（`output_format: "mp4"`），以及文生视频（`t2v`）、首尾帧生视频（`first_last_frame`，`generate_type: 1`）、全能多模态参考生视频（`reference`，支持在提示词中引用 `[@图片1]`、`[@视频1]`、`[@音频1]`）、视频编辑（`edit`）与视频延长（`extend`）。
-- **凭据文件热加载**：`accessKeyFile` 支持纯文本密钥文件及 `pippit-cli` 的 `browser-credential.json`（`{"access_key":"..."}`），`cookieFile` 支持 4 种 Cookie 导出格式，均在文件 `mtime` 变化时自动热重载。
-- **支持自动下载 MP4**：`get_task` 与 `wait_task` 支持传入 `output_path` 或 `download_dir`，在任务完成时自动将生成的 MP4 视频下载到本地磁盘。
-- **全链路凭据脱敏**：所有异常与错误输出均自动抹除 Access Key 与 Cookie 敏感值，`xiaoyunque_account` 永不返回用户 `uid`。
+- **全系列 Seedance 2.5 / 2.0 / 1.0 与平台模型支持（共 11 个）**：支持官方 Skill API 当前开放的 8 个模型（`Seedance_2.5`、`Seedance_2.5_draft`、`seedance2.0_vision`、`seedance2.0_fast_vision`、`Seedance_2.0_mini`、`Seedance_2.0_mini_lite`、`wan3.0`、`happyhorse-1.1`），并保留网页端兼容的 3 个旧通道模型（`seedance2.0_direct`、`seedance2.0_fast_direct`、`Seedance_1.0_fast`）。
+- **完整参数与多种创作模式**：支持画面比例（`aspect_ratio`）、画质/分辨率（`resolution`：`480p`/`720p`/`1080p`/`4k`）、时长（`duration`）、随机种子（`seed`，自动拦截不支持的模型）、音频提示词控制（`audio`）、输出格式校验（`output_format: "mp4"`），以及文生视频（`t2v`）、首尾帧生视频（`first_last_frame`，`generate_type: 1`）、全能多模态参考生视频（`reference`，支持引用 `[@图片1]`、`[@视频1]`、`[@音频1]`）、视频编辑（`edit`）与视频延长（`extend`）。
+- **凭据文件热加载与零中断兼容**：页面未添加任何账号时无缝回退至 `plugins.json` 的 `options`（`accessKeyFile` / `cookieFile`）与环境变量，文件 `mtime` 变化时自动热重载。
+- **支持自动下载 MP4 与全链路脱敏**：`get_task` 与 `wait_task` 支持 `output_path` / `download_dir` 自动下载 MP4；所有异常输出自动抹除 Access Key 与 Cookie，永不返回用户 `uid`。
 
 ---
 
-### 🎬 支持的 Seedance 模型参数与价格一览
+### 🎬 支持的视频生成模型参数与价格一览（11 个模型）
 
-| 模型 Key (`model`) | 名称 | 时长范围 (`duration`) | 分辨率 (`resolution`) | 支持比例 (`aspect_ratio`) | 首尾帧 (`first`/`last`) | 参考素材上限 (`总`/`图`/`视`/`音`) | 创作模式 (`mode`) | 每秒积分价格 (`credits/s`) |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| `Seedance_2.5` *(默认)* | Seedance 2.5 | `4`–`30`s（默认 `10`s） | `480p`, `720p` (默认), `1080p`, `4k` | `adaptive`, `16:9`, `21:9`, `9:16`, `1:1`, `4:3`, `3:4` | 首帧 ✅ / 尾帧 ✅ | `50` / `30` / `10` / `10` | `t2v`, `first_last_frame`, `reference`, `edit`, `extend` | `480p`: **12/s**<br>`720p`: **20/s**<br>`1080p`: **64/s**<br>`4k`: **99/s** |
-| `Seedance_2.5_draft` | Seedance 2.5 Draft (样片) | `4`–`30`s（默认 `10`s） | 固定 `480p` 样片（不发送 `resolution`） | 同上 | 首帧 ✅ / 尾帧 ✅ | `50` / `30` / `10` / `10` | 同 `Seedance_2.5` + `draft_task_id` 转正 | **9/s** |
-| `seedance2.0_vision` | Seedance 2.0 VIP | `4`–`15`s（默认 `10`s） | `480p`, `720p` (默认), `1080p`, `4k` | 同上 | 首帧 ✅ / 尾帧 ✅ | `12` / `9` / `3` / `3` | `t2v`, `first_last_frame`, `reference` | `480p`: **8/s**<br>`720p`: **14/s**<br>`1080p`: **33/s**<br>`4k`: **80/s** |
-| `seedance2.0_fast_vision` | Seedance 2.0 Fast VIP | `4`–`15`s（默认 `10`s） | `480p`, `720p` (默认) | 同上 | 首帧 ✅ / 尾帧 ✅ | `12` / `9` / `3` / `3` | `t2v`, `first_last_frame`, `reference` | `480p`: **3/s**<br>`720p`: **6/s** |
-| `Seedance_2.0_mini` | Seedance 2.0 Mini | `4`–`15`s（默认 `10`s） | 服务端默认 `720p`（不发送 `resolution`） | 同上 | 首帧 ✅ / 尾帧 ✅ | `12` / `9` / `3` / `3` | `t2v`, `first_last_frame`, `reference` | **6/s** |
-| `Seedance_2.0_mini_lite` | Seedance 2.0 Mini 体验版 | `4`–`15`s（默认 `10`s） | 服务端默认 `720p`（不发送 `resolution`） | 同上 | 首帧 ✅ / 尾帧 ✅ | `12` / `9` / `3` / `3` | `t2v`, `first_last_frame`, `reference` | **4/s** |
-| `seedance2.0_direct` | Seedance 2.0 (旧通道) | `4`–`15`s（默认 `4`s） | `480p` (默认), `720p` | 同上 | 首帧 ✅ / 尾帧 ✅ | `12` / `9` / `3` / `0` | `t2v`, `first_last_frame`, `reference` | `480p`: **7/s**<br>`720p`: **8/s** *(含参考视频按输出+参考秒数计费)* |
-| `seedance2.0_fast_direct` | Seedance 2.0 Fast (旧通道) | `4`–`15`s（默认 `10`s） | 服务端默认 `720p`（不发送 `resolution`） | 同上 | 首帧 ✅ / 尾帧 ✅ | `12` / `9` / `3` / `0` | `t2v`, `first_last_frame`, `reference` | **5/s** *(含参考视频按输出+参考秒数计费)* |
-| `Seedance_1.0_fast` | Seedance 1.0 Fast | `2`–`12`s（默认 `5`s） | `720p` (默认), `1080p` | 同上 | 仅首帧 ✅ / 尾帧 ❌ | `1` / `1` / `0` / `0` | `t2v`, `first_last_frame` (单首帧) | `720p`: **2/s**<br>`1080p`: **4/s** |
+| 模型 Key (`model`) | 名称 | 通道支持 | 时长 (`duration`) | 分辨率 (`resolution`) | 支持比例 (`aspect_ratio`) | 首尾帧 / Seed | 参考上限 (`总`/`图`/`视`/`音`) 与特殊约束 | 创作模式 (`mode`) | 每秒积分价格 (`credits/s`) |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| `Seedance_2.5` *(默认)* | Seedance 2.5 | Skill + Web | `4`–`30`s（默认 `10`s） | `480p`, `720p` (默认), `1080p`, `4k` | `adaptive`, `16:9`, `21:9`, `9:16`, `1:1`, `4:3`, `3:4` | 首 ✅ 尾 ✅ / Seed ✅ | `50` / `30` / `10` / `10`（图 ≤30MB） | `t2v`, `first_last_frame`, `reference`, `edit`, `extend` | `480p`: **12/s**<br>`720p`: **20/s**<br>`1080p`: **64/s**<br>`4k`: **99/s** *(含参视按总秒数)* |
+| `Seedance_2.5_draft` | Seedance 2.5 Draft (样片) | Skill + Web | `4`–`30`s（默认 `10`s） | 固定 `480p` 样片（不发 `resolution`） | 同上 | 首 ✅ 尾 ✅ / Seed ✅ | `50` / `30` / `10` / `0`（不支持参考音频与 `edit`） | `t2v`, `first_last_frame`, `reference`, `extend` + `draft_task_id` 转正 | **9/s** |
+| `seedance2.0_vision` | Seedance 2.0 VIP | Skill + Web | `4`–`15`s（默认 `10`s） | `480p`, `720p` (默认), `1080p`, `4k` | 同上 | 首 ✅ 尾 ✅ / Seed ✅ | `12` / `9` / `3` / `3` | `t2v`, `first_last_frame`, `reference` | `480p`: **8/s**<br>`720p`: **14/s**<br>`1080p`: **33/s**<br>`4k`: **80/s** *(含参视按总秒数)* |
+| `seedance2.0_fast_vision` | Seedance 2.0 Fast VIP | Skill + Web | `4`–`15`s（默认 `10`s） | `480p`, `720p` (默认) | 同上 | 首 ✅ 尾 ✅ / Seed ✅ | `12` / `9` / `3` / `3` | `t2v`, `first_last_frame`, `reference` | `480p`: **3/s**<br>`720p`: **6/s** *(含参视按总秒数)* |
+| `Seedance_2.0_mini` | Seedance 2.0 Mini | Skill + Web | `4`–`15`s（默认 `10`s） | 固定 `720p`（不发 `resolution`） | 同上 | 首 ✅ 尾 ✅ / Seed ✅ | `12` / `9` / `3` / `3` | `t2v`, `first_last_frame`, `reference` | **6/s** *(含参视按总秒数)* |
+| `Seedance_2.0_mini_lite` | Seedance 2.0 Mini 体验版 | Skill + Web | `4`–`15`s（默认 `10`s） | 固定 `720p`（不发 `resolution`） | 同上 | 首 ✅ 尾 ✅ / Seed ✅ | `12` / `9` / `3` / `3` | `t2v`, `first_last_frame`, `reference` | **4/s** |
+| `wan3.0` | Wan 3.0 | Skill + Web | `4`–`30`s（默认 `10`s） | `480p`, `720p` (默认), `1080p` | 不支持 `21:9`，其余同上 | 首 ✅ 尾 ✅ / Seed ✅ | `12` / `9` / `3` / `3`（图 ≤20MB 禁 GIF；参视 ≤15s 且参视+输出 ≤30s） | `t2v`, `first_last_frame`, `reference` | `480p`: **7/s**<br>`720p`: **14/s**<br>`1080p`: **33/s** *(含参视按总秒数)* |
+| `happyhorse-1.1` | HappyHorse 1.1 | Skill + Web | `3`–`15`s（默认 `5`s） | `720p` (默认), `1080p` | 不支持 `adaptive`，支持其余 6 种 | 首 ❌ 尾 ❌ / Seed ❌ | `12` / `9` / `3` / `3`（支持 `heic/heif`，禁 `bmp/gif`） | `t2v`, `reference` | `720p`: **14/s**<br>`1080p`: **18/s** |
+| `seedance2.0_direct` | Seedance 2.0 (旧通道) | 仅 Web 列表 | `4`–`15`s（默认 `4`s） | `480p` (默认), `720p` | 同 `Seedance_2.5` | 首 ✅ 尾 ✅ / Seed ✅ | `12` / `9` / `3` / `0` | `t2v`, `first_last_frame`, `reference` | `480p`: **7/s**<br>`720p`: **8/s** *(含参视按总秒数)* |
+| `seedance2.0_fast_direct` | Seedance 2.0 Fast (旧通道) | 仅 Web 列表 | `4`–`15`s（默认 `10`s） | 固定 `720p`（不发 `resolution`） | 同 `Seedance_2.5` | 首 ✅ 尾 ✅ / Seed ✅ | `12` / `9` / `3` / `0` | `t2v`, `first_last_frame`, `reference` | **5/s** *(含参视按总秒数)* |
+| `Seedance_1.0_fast` | Seedance 1.0 Fast | 仅 Web 列表 | `2`–`12`s（默认 `5`s） | `720p` (默认), `1080p` | 同 `Seedance_2.5` | 仅首 ✅ 尾 ❌ / Seed ❌ | `1` / `1` / `0` / `0`（不支持 `reference`） | `t2v`, `first_last_frame` (单首帧) | `720p`: **2/s**<br>`1080p`: **4/s** |
 
-> **非 Seedance 平台模型说明**：除上述 9 个 Seedance 模型外，小云雀还提供 **`wan3.0`**（Wan 3.0，`4`–`30`s，`480p`/`720p`/`1080p`，不支持 `21:9`，每秒 `7`/`14`/`33` 积分）和 **`happyhorse-1.1`**（HappyHorse 1.1，`3`–`15`s，`720p`/`1080p`，不支持 `adaptive` 与首尾帧，每秒 `14`/`18` 积分）。调用 `xiaoyunque_list_video_models` 时传入 `{"seedance_only": false}` 即可查看全部 11 个模型。
+> **说明**：调用 `xiaoyunque_list_video_models` 默认仅返回 Seedance 系列（`seedance_only: true`），传入 `{"seedance_only": false}` 可查看全部模型（Access-Key 通道实时返回前 8 个，网页端 Cookie 通道或 `offline: true` 返回全部 11 个）。标有 *“含参视按总秒数”* 的模型在传入参考视频时，线上规则将参考视频时长计入计费总秒数。
 
 ### 📝 关键参数说明
 
@@ -71,18 +73,20 @@ magpie plugin add /path/to/magpie-plugin-xiaoyunque
 
 ---
 
-### 🔑 获取 Access Key（推荐）或 Cookie 与配置
+### 🔑 配置多账号（Magpie「模型 → 供应商」页面，推荐）与 `plugins.json`
 
-#### 1. 如何创建小云雀官方 Access Key（推荐，支持无头 Linux 服务器）
-1. 在浏览器中登录小云雀并打开官方 CLI / API 密钥管理页：**[https://www.xiaoyunque.com/cli?tab=api](https://www.xiaoyunque.com/cli?tab=api)**。
-2. 点击创建 Access Key，复制生成的 64 位十六进制密钥并保存到本地权限为 `0600` 的文件中（例如 `~/.config/magpie/xiaoyunque-access-key`）：
-   ```bash
-   install -m 600 /dev/null ~/.config/magpie/xiaoyunque-access-key
-   # 将 Access Key 写入 ~/.config/magpie/xiaoyunque-access-key
-   ```
-   *(或者若你已在桌面端运行过 `npx @pippit-dev/cli login`，也可直接将 `accessKeyFile` 指向 `~/.pippit/credentials/browser-credential.json` 并复制到服务器上。)*
+#### 1. 在 Magpie Web「模型 → 供应商」页面添加账号（推荐，支持多账号）
+1. 在浏览器中打开小云雀官方 CLI / API 密钥管理页创建 Access Key：**[https://www.xiaoyunque.com/cli?tab=api](https://www.xiaoyunque.com/cli?tab=api)**。
+2. 打开 Magpie Web 管理界面 → **模型 → 供应商（Models → Providers）** → 找到 **`小云雀 (XiaoYunQue)`** 点击添加账号：
+   - **登录方式 1（默认推荐）：小云雀官方 Access Key**：在密码框中粘贴刚创建的 Access Key，可选填写「账号备注名」（例如 `主号`、`二号机`，将显示为页面账号名），保存后卡片可直接显示积分余额。
+   - **登录方式 2（兼容回退）：网页端 Cookie / Session JSON**：粘贴浏览器 `Cookie` 请求头或 `xiaoyunque-session.json` 全文，可选填写备注名。
+3. **多账号管理、凭据优先级与任务绑定规则**：
+   - 可重复点击添加账号导入多个小云雀账号；在供应商卡片中调整账号顺序（**最上方且已启用的账号即为默认账号**），或单独禁用/移除某个账号（禁用整个供应商卡片时回退至 `options`）。
+   - **凭据优先级**：显式传入 `args.account` > 任务已绑定槽位 > 供应商页面置顶启用账号 > `plugins.json` 的 `options`（`accessKeyFile` / `cookieFile` 等）> 环境变量 `XYQ_*`。页面未添加任何账号时无缝回退至原有 `options`，升级零中断；**绝不按次轮换账号**。
+   - **`account` 选择器**：所有 8 个工具均支持可选参数 `account`（可匹配槽位键如 `"xiaoyunque"` / `"xiaoyunque#<hash>"`、页面备注名、自定义别名、密钥末 4 位，或传 `"options"` 强制使用 `plugins.json` 凭据）；`xiaoyunque_account` 支持 `all_accounts: true` 一次查询全部账号余额。
+   - **同账号素材与任务粘性**：`upload_image` 返回的 `asset_id` / `pippit_asset_id` 归属上传时使用的账号，后续 `create_video` 引用该素材时必须使用**同一个账号**。`create_video` 成功后会自动记录 `task_id → 槽位`，后续 `get_task` / `wait_task` / `cancel_task` 未传 `account` 时优先回到该槽位查询；遇任务不存在（`ret=16017`）时再遍历其余已启用账号兜底。
 
-#### 2. 在 Magpie `plugins.json` 中配置
+#### 2. （兼容旧方式）在 Magpie `plugins.json` 中配置单账号或全局选项
 
 ```json
 {
@@ -99,9 +103,9 @@ magpie plugin add /path/to/magpie-plugin-xiaoyunque
   ]
 }
 ```
-*(注：当配置了 `accessKey`、`accessKeyFile` 或环境变量 `XYQ_ACCESS_KEY` / `XYQ_ACCESS_KEY_FILE` 时，插件自动启用官方 Access-Key `skill/*` 后端；未提供 Access Key 时才会回退使用 `cookie` / `cookieFile`。)*
+*(注：`defaultModel`、`baseUrl`、`skillBaseUrl`、`teamId` 等非凭据配置对页面多账号同样全局生效；当供应商页面没有任何启用账号时，自动回退读取 `options` 中的 `accessKeyFile` / `cookieFile` 或 `pippit-cli` 的 `browser-credential.json`。)*
 
-#### 3. 配置项与环境变量一览（优先级：`options` > 环境变量；Access Key > Cookie）
+#### 3. `options` 配置项与环境变量一览（回退优先级：页面启用账号 > `options` > 环境变量；Access Key > Cookie）
 
 | `options` 字段 | 环境变量名 | 默认值 | 说明 |
 | :--- | :--- | :--- | :--- |
@@ -116,33 +120,40 @@ magpie plugin add /path/to/magpie-plugin-xiaoyunque
 | `defaultModel` | `XYQ_DEFAULT_MODEL` | `Seedance_2.5` | `create_video` 与 `estimate_credits` 的默认模型 Key |
 
 #### 4.（可选回退）如何从浏览器获取网页端 Cookie
-若仅使用网页端 Cookie 回退模式，可在登录 [https://www.xiaoyunque.com](https://www.xiaoyunque.com) 后通过浏览器扩展导出 Cookie JSON / `cookies.txt` 并配置 `cookieFile`。注意网页端 `submit_run` 在非浏览器环境极易触发字节跳动 Shark 风控（`ret=16014`），生产环境强烈建议使用 Access Key。
+若仅使用网页端 Cookie 回退模式，可在登录 [https://www.xiaoyunque.com](https://www.xiaoyunque.com) 后通过浏览器扩展导出 Cookie JSON / `cookies.txt` 并粘贴到供应商页面「网页端 Cookie / Session JSON」或配置 `cookieFile`。注意网页端 `submit_run` 在非浏览器环境极易触发字节跳动 Shark 风控（`ret=16014`），生产环境强烈建议使用 Access Key。
 
 ---
 
-### 🔌 在 Claude Code / Codex 中接入使用
+### 🔌 在 Claude Code / Codex 中接入使用（MCP 与 `/xiaoyunque` Skill）
 
-Magpie 启动后会将插件工具挂载到 `http://127.0.0.1:3425/mcp/magpie/tools`。由于包名为 `opencode-xiaoyunque`，Magpie 会自动剥离 `opencode-` 前缀，将工具暴露为 `xiaoyunque_<tool>`：
+Magpie 启动后既提供按插件隔离的独立 MCP 端点 `http://127.0.0.1:3425/mcp/magpie/tools/xiaoyunque`，也提供聚合端点 `http://127.0.0.1:3425/mcp/magpie/tools`：
 
 ```bash
-# 在 Claude Code 中添加 Magpie 工具 MCP 服务
+# 推荐：注册为名为 xiaoyunque 的独立 MCP 服务（配合 skills/xiaoyunque 使用）
+claude mcp add --transport http xiaoyunque http://127.0.0.1:3425/mcp/magpie/tools/xiaoyunque
+
+# 或挂载聚合工具端点
 claude mcp add --transport http magpie-tools http://127.0.0.1:3425/mcp/magpie/tools
 ```
+
+仓库内附带 [`skills/xiaoyunque/`](./skills/xiaoyunque/) 技能包（含 `SKILL.md`、模型计价与质检参考文档，以及支持预算门禁与 CSV 记账的无 MCP CLI 脚本 `scripts/xiaoyunque.py`），可复制到 `.claude/skills/xiaoyunque/` 直接使用 `/xiaoyunque`。
 
 ---
 
 ### 🛠️ 工具参考（MCP Tools）
 
+> 所有工具均支持可选参数 `account`（指定账号槽位、备注名、别名、密钥末 4 位或 `"options"`），并在返回值中附带实际使用的账号标签 `account`。
+
 | MCP 工具名 | 插件内部名 | 功能说明与主要参数 |
 | :--- | :--- | :--- |
-| `xiaoyunque_account` | `account` | 查询账号积分余额（Access-Key 模式调用 `POST /api/biz/v1/skill/get_credit_balance` 返回 `{auth_mode: "access_key", team_id, credit: {total, total_remain_amount}}`；Cookie 模式返回工作空间、积分明细与 VIP 状态）。永不返回敏感 `uid`。 |
-| `xiaoyunque_list_video_models` | `list_video_models` | 获取可用视频模型列表（Access-Key 模式调用 `POST /api/biz/v1/skill/get_available_model_list`）。参数：`seedance_only` (`boolean`，默认 `true`)、`offline` (`boolean`，默认 `false`，为 `true` 时使用内置静态表)、`with_prices` (`boolean`，默认 `false`)。 |
-| `xiaoyunque_upload_image` | `upload_image` | 上传参考图或首尾帧图片（Access-Key 模式调用 `POST /api/biz/v1/skill/upload_file`，Cookie 模式调用 `/api/web/v1/common/upload_file`，最大 30 MB，支持 `jpg/jpeg/png/webp/bmp/gif`）。参数：`url` \| `path` \| `base64`（三选一），可选 `filename`。返回 `{asset_id, pippit_asset_id, url, width, height, format}`。 |
-| `xiaoyunque_estimate_credits` | `estimate_credits` | 预估视频生成所需积分并对比当前余额。返回 `per_second`、`total`、`check_deduct_status` (`1` = 余额充足)、`enough_balance` 及 `balance`。 |
-| `xiaoyunque_create_video` | `create_video` | 提交视频生成任务（Access-Key 模式调用 `POST /api/biz/v1/skill/submit_run`；Cookie 模式调用 `/api/biz/v1/agent/submit_run`）。参数：`prompt`（必填，除非传入 `draft_task_id`）、`model`、`duration`、`aspect_ratio`、`resolution`、`audio`、`output_format` (`"mp4"`)、`mode` (`auto\|t2v\|first_last_frame\|reference\|edit\|extend`)、`first_frame`、`last_frame`、`reference_images`、`reference_videos`、`reference_audios`、`seed`、`draft_task_id`、`wait_seconds` (`0`–`40`)。返回 `{task_id: "<thread_id>:<run_id>", thread_id, run_id, ...}`。 |
-| `xiaoyunque_get_task` | `get_task` | 查询单次运行状态（Access-Key 模式调用 `POST /api/biz/v1/skill/get_thread`；Cookie 模式调用 `get_run` / `get_thread`）。参数：`task_id` (`"<thread_id>:<run_id>"`) 或 `thread_id` + `run_id`，可选 `output_path` / `download_dir`（完成时自动下载 MP4）。返回 `status` (`queued\|running\|completed\|failed\|canceled`)、`eta_seconds`、`credit_consumption`、`fail_reason` 与 `videos`。 |
-| `xiaoyunque_wait_task` | `wait_task` | 轮询 `get_task` 直至任务完成/失败/取消或达到单次等待上限（`timeout_seconds` 默认 40s，最大 45s；`interval_seconds` 默认 5s），可选 `output_path` / `download_dir` 自动下载 MP4。若返回 `timed_out: true`，请再次调用 `xiaoyunque_wait_task`。 |
-| `xiaoyunque_cancel_task` | `cancel_task` | 取消排队或运行中的视频任务（`POST /api/biz/v1/agent/cancel_run`）。参数：`task_id` 或 `thread_id` + `run_id`。 |
+| `xiaoyunque_account` | `account` | 查询账号积分余额（支持 `account` 选择单账号，或 `all_accounts: true` 列出全部账号及余额；带 `selected_account: {slot, label}`）。永不返回敏感 `uid`。 |
+| `xiaoyunque_list_video_models` | `list_video_models` | 获取可用视频模型列表。参数：`seedance_only` (`boolean`，默认 `true`)、`offline` (`boolean`，默认 `false`)、`with_prices` (`boolean`，默认 `false`)、`account`。 |
+| `xiaoyunque_upload_image` | `upload_image` | 上传参考图或首尾帧图片（`wan3.0` 最大 20 MB 禁 GIF，`happyhorse-1.1` 支持 `heic/heif` 禁 `bmp/gif`，其余最大 30 MB）。参数：`url` \| `path` \| `base64`、`filename`、`account`。**注意：返回的 `asset_id` 归属上传账号，`create_video` 须用同一账号。** |
+| `xiaoyunque_estimate_credits` | `estimate_credits` | 预估视频生成所需积分并对比当前账号余额。支持 `account` 参数。返回 `per_second`、`estimated_credits`、`pricing_policy`、`enough_balance` 及 `balance`。 |
+| `xiaoyunque_create_video` | `create_video` | 提交视频生成任务并自动记录 `task_id → 账号槽位`。参数：`prompt`、`model`、`duration`、`aspect_ratio`、`resolution`、`audio`、`output_format` (`"mp4"`)、`mode` (`auto\|t2v\|first_last_frame\|reference\|edit\|extend`)、`first_frame`、`last_frame`、`reference_images`、`reference_videos`、`reference_audios`、`seed`、`draft_task_id`、`wait_seconds` (`0`–`40`)、`account`。 |
+| `xiaoyunque_get_task` | `get_task` | 查询单次运行状态（未传 `account` 时优先回到创建槽位，遇 `16017` 遍历其余启用账号兜底）。参数：`task_id` 或 `thread_id` + `run_id`、`output_path` / `download_dir`、`account`。 |
+| `xiaoyunque_wait_task` | `wait_task` | 轮询 `get_task` 直至完成/失败/取消或达到单次上限（`timeout_seconds` 默认 40s，最大 45s；`interval_seconds` 默认 5s），可选 `output_path` / `download_dir`、`account`。若返回 `timed_out: true`，请循环再次调用。 |
+| `xiaoyunque_cancel_task` | `cancel_task` | 取消排队或运行中的视频任务（`POST /api/biz/v1/agent/cancel_run`）。参数：`task_id` 或 `thread_id` + `run_id`、`account`。 |
 
 ---
 
@@ -231,17 +242,17 @@ claude mcp add --transport http magpie-tools http://127.0.0.1:3425/mcp/magpie/to
 
 ## 🌐 English Documentation
 
-`opencode-xiaoyunque` is a **Magpie / OpenCode tools plugin** that wraps **XiaoYunQue (`https://xyq.jianying.com` / `https://www.xiaoyunque.com`, ByteDance / Jianying's domestic "Pippit" AI video generation platform)** into MCP tools exposed at Magpie's `/mcp/magpie/tools` endpoint (`xiaoyunque_*`).
+`opencode-xiaoyunque` is a **Magpie / OpenCode tools & provider-auth plugin** that wraps **XiaoYunQue (`https://xyq.jianying.com` / `https://www.xiaoyunque.com`, ByteDance / Jianying's domestic "Pippit" AI video generation platform)** into MCP tools exposed at Magpie's `/mcp/magpie/tools/xiaoyunque` and `/mcp/magpie/tools` endpoints (`xiaoyunque_*`), with native **Models → Providers (`小云雀 (XiaoYunQue)`)** multi-account management.
 
-It uses the **official Access-Key Skill API (`https://xyq.jianying.com/api/biz/v1/skill/*`) by default** whenever an Access Key is provided (`accessKey`, `accessKeyFile`, `XYQ_ACCESS_KEY`, or `XYQ_ACCESS_KEY_FILE`), and keeps the web Cookie backend (`cookie` / `cookieFile`) as a fallback.
+It uses the **official Access-Key Skill API (`https://xyq.jianying.com/api/biz/v1/skill/*`) by default** whenever an Access Key is provided, and keeps the web Cookie backend as a fallback.
 
 ### ✨ Features
 
+- **Magpie "Models → Providers" Multi-Account Support (v0.2.0)**: Exports `config` + `auth` hooks under provider ID `xiaoyunque` (`小云雀 (XiaoYunQue)`) with **0 models declared** (never routed for chat or `/v1/videos`). Add multiple Access-Key or Cookie accounts in the Web UI, reorder to switch the default account, view prepaid credit balance on Access-Key slots, pass `account` on any tool, and query all balances via `xiaoyunque_account({ "all_accounts": true })`.
 - **Official Access-Key Skill API Backend (Default, Headless-Friendly)**: Pure JS client calling `https://xyq.jianying.com/api/biz/v1/skill/*` with `Authorization: Bearer <AccessKey>` and `User-Agent: Pippit-CLI/1.0`—no CLI subprocess, no cookies, no `a_bogus`, and no Shark risk-control blocks (`ret=16014`).
-- **Full Seedance 2.5 / 2.0 / 1.0 & Platform Model Support**: Supports `Seedance_2.5`, `Seedance_2.5_draft`, `seedance2.0_vision`, `seedance2.0_fast_vision`, `Seedance_2.0_mini`, `Seedance_2.0_mini_lite`, `seedance2.0_direct`, `seedance2.0_fast_direct`, `Seedance_1.0_fast`, `wan3.0`, and `happyhorse-1.1`.
-- **Flexible Credential Loading & Hot Reload**: Create an Access Key at **[https://www.xiaoyunque.com/cli?tab=api](https://www.xiaoyunque.com/cli?tab=api)** and pass `accessKey`, `accessKeyFile` (plain text or `pippit-cli`'s `browser-credential.json`), or `XYQ_ACCESS_KEY`. Automatically reloads when file `mtime` changes.
-- **Direct MP4 Download**: Pass `output_path` or `download_dir` to `get_task` or `wait_task` to automatically download completed MP4 videos.
-- **Automatic Media Upload & Secret Redaction**: Uploads local files, URLs, or base64 data URIs via `/api/biz/v1/skill/upload_file` (or `/api/web/v1/common/upload_file` in Cookie fallback mode) and redacts Access Keys and cookies from all error messages.
+- **11 Audited Video Models**: Supports the 8 models currently exposed on the official Skill API (`Seedance_2.5`, `Seedance_2.5_draft`, `seedance2.0_vision`, `seedance2.0_fast_vision`, `Seedance_2.0_mini`, `Seedance_2.0_mini_lite`, `wan3.0`, `happyhorse-1.1`) plus 3 legacy Web-listed models (`seedance2.0_direct`, `seedance2.0_fast_direct`, `Seedance_1.0_fast`), enforcing model-specific media size/format/duration/seed/mode rules (see the 11-model table above).
+- **Zero-Downtime Fallback & Sticky Task Binding**: Credential priority is `args.account` > sticky `task_id → slot` binding > top enabled Providers-page account > `plugins.json` `options` (`accessKeyFile` / `cookieFile`) > `XYQ_*` env vars (never round-robins). Note: assets uploaded via `upload_image` belong to the uploading account—use the **same `account`** when calling `create_video`.
+- **Direct MP4 Download & Secret Redaction**: Pass `output_path` or `download_dir` to `get_task` or `wait_task` (single call ≤45s; loop on `timed_out: true`), with automatic redaction of Access Keys and cookies.
 
 ### 📦 Installation & Configuration
 
@@ -252,7 +263,10 @@ magpie plugin add github:KasenRi/magpie-plugin-xiaoyunque
 magpie plugin add /path/to/magpie-plugin-xiaoyunque
 ```
 
-Configure in Magpie's `plugins.json` (create your Access Key at [https://www.xiaoyunque.com/cli?tab=api](https://www.xiaoyunque.com/cli?tab=api)):
+1. **Recommended — Magpie Web UI ("Models → Providers")**:
+   - Create an Access Key at **[https://www.xiaoyunque.com/cli?tab=api](https://www.xiaoyunque.com/cli?tab=api)**.
+   - Open Magpie Web UI → **Models → Providers** → **`小云雀 (XiaoYunQue)`**, paste your Access Key (or web Cookie / `xiaoyunque-session.json` via Method 2), and optionally enter an account label (e.g. `main`, `sub`). Add as many accounts as needed; the top enabled slot is the default.
+2. **Fallback / Global Options — `plugins.json`**:
 
 ```json
 {
@@ -271,11 +285,16 @@ Configure in Magpie's `plugins.json` (create your Access Key at [https://www.xia
 
 Or via environment variables: `XYQ_ACCESS_KEY`, `XYQ_ACCESS_KEY_FILE`, `XYQ_SKILL_BASE_URL`, `XYQ_COOKIE`, `XYQ_COOKIE_FILE`, `XYQ_BASE_URL`, `XYQ_WORKSPACE_ID`, `XYQ_TEAM_ID`, `XYQ_DEFAULT_MODEL`.
 
-### 🔌 Connecting Claude Code / Codex
+### 🔌 Connecting Claude Code / Codex & `/xiaoyunque` Skill
 
 ```bash
+# Per-plugin MCP endpoint (used by skills/xiaoyunque)
+claude mcp add --transport http xiaoyunque http://127.0.0.1:3425/mcp/magpie/tools/xiaoyunque
+# Or aggregated tools endpoint
 claude mcp add --transport http magpie-tools http://127.0.0.1:3425/mcp/magpie/tools
 ```
+
+Copy [`skills/xiaoyunque/`](./skills/xiaoyunque/) into `.claude/skills/xiaoyunque/` to enable the `/xiaoyunque` workflow skill and standalone CLI (`scripts/xiaoyunque.py`).
 
 ### 🙏 Credits & Acknowledgements
 

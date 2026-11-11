@@ -1724,4 +1724,468 @@ test("Access-Key backend: list_video_models, estimate_credits, upload_image, cre
   assert.match(akErr.message, /\[REDACTED\]/);
 });
 
+test("config and auth hooks: 0 models declared, Access-Key vs Cookie sign-in methods, usage hook safety, and createTools(singleClient) compatibility", async (t) => {
+  const f = await startFakeXYQServer(t);
+  const hooks = await XiaoYunQuePlugin(
+    { directory: f.tempDir },
+    {
+      baseUrl: f.baseUrl,
+      skillBaseUrl: f.baseUrl,
+      now: FIXED_NOW_MS,
+    }
+  );
+
+  // 1. config hook declares provider display name and 0 models
+  const cfg = {};
+  await hooks.config(cfg);
+  assert.equal(cfg.provider.xiaoyunque.name, "小云雀 (XiaoYunQue)");
+  assert.equal(cfg.provider.xiaoyunque.models, undefined, "must not declare chat/video routing models");
+
+  // 2. auth hook methods: Access Key (method 0) and Cookie/Session JSON (method 1), no authorize
+  assert.equal(hooks.auth.provider, "xiaoyunque");
+  assert.equal(hooks.auth.methods.length, 2);
+  assert.equal(hooks.auth.methods[0].type, "api");
+  assert.equal(hooks.auth.methods[0].authorize, undefined);
+  assert.match(hooks.auth.methods[0].placeholder, /xiaoyunque\.com\/cli\?tab=api/);
+  assert.ok(hooks.auth.methods[0].prompts.some((p) => p.key === "email" && p.type === "text"));
+
+  assert.equal(hooks.auth.methods[1].type, "api");
+  assert.equal(hooks.auth.methods[1].authorize, undefined);
+  assert.ok(hooks.auth.methods[1].prompts.some((p) => p.key === "email" && p.type === "text"));
+  const modePrompt = hooks.auth.methods[1].prompts.find((p) => p.key === "mode");
+  assert.ok(modePrompt && modePrompt.type === "select");
+  assert.equal(modePrompt.options[0].value, "cookie");
+
+  // 3. auth.usage: returns balance window in Access-Key mode, empty windows in Cookie mode (no network call)
+  const akUsage = await hooks.auth.usage(async () => ({
+    type: "api",
+    key: f.state.validAccessKey,
+    metadata: { email: "主号" },
+  }));
+  assert.deepEqual(akUsage, {
+    windows: [{ name: "积分", balance: 1242, unit: "积分" }],
+  });
+
+  const reqBeforeCookieUsage = f.state.requests.length;
+  const cookieUsage = await hooks.auth.usage(async () => ({
+    type: "api",
+    key: JSON.stringify({
+      cookies: [{ name: "sessionid", value: "secret_sess_abc123", domain: ".xiaoyunque.com" }],
+    }),
+    metadata: { email: "网页号", mode: "cookie" },
+  }));
+  assert.deepEqual(cookieUsage, { windows: [] });
+  assert.equal(
+    f.state.requests.length,
+    reqBeforeCookieUsage,
+    "Cookie mode auth.usage must not hit web commerce endpoints in background polling"
+  );
+
+  // 4. Direct createTools(singleClient) backward compatibility
+  const singleClient = new _internal.XiaoYunQueClient({
+    baseUrl: f.baseUrl,
+    accessKey: f.state.validAccessKey,
+    now: FIXED_NOW_MS,
+  });
+  const directTools = _internal.createTools(singleClient);
+  const directAcc = await directTools.account.execute({});
+  assert.equal(directAcc.auth_mode, "access_key");
+  assert.equal(directAcc.credit.total, 1242);
+  assert.equal("selected_account" in directAcc, false);
+});
+
+test("MagpieAccountPool multi-account priority: options fallback, logins.json switch, account selector, all_accounts, and provider off", async (t) => {
+  const f = await startFakeXYQServer(t);
+  const ak1 = "fake_ak_slot1_00000000000000000000000000000000000000000000001111";
+  const ak2 = "fake_ak_slot2_00000000000000000000000000000000000000000000002222";
+  const akLegacy = "fake_ak_legacy_0000000000000000000000000000000000000000000009999";
+
+  f.state.customHandler = async (req, sendJson) => {
+    if (req.pathname === "/api/biz/v1/skill/get_credit_balance") {
+      const auth = req.headers.authorization || "";
+      if (auth === `Bearer ${ak1}`) {
+        sendJson(200, { ret: "0", data: { total_remain_amount: "1001" } });
+        return true;
+      }
+      if (auth === `Bearer ${ak2}`) {
+        sendJson(200, { ret: "0", data: { total_remain_amount: "2002" } });
+        return true;
+      }
+      if (auth === `Bearer ${akLegacy}`) {
+        sendJson(200, { ret: "0", data: { total_remain_amount: "999" } });
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const hooks = await XiaoYunQuePlugin(
+    { directory: f.tempDir },
+    {
+      baseUrl: f.baseUrl,
+      skillBaseUrl: f.baseUrl,
+      accessKey: akLegacy,
+      defaultModel: "seedance2.0_fast_vision",
+      now: FIXED_NOW_MS,
+    }
+  );
+
+  // 1. Zero UI accounts -> seamless fallback to plugins.json options
+  const fallbackAcc = await hooks.tool.account.execute({}, { directory: f.tempDir });
+  assert.equal(fallbackAcc.account, "options");
+  assert.deepEqual(fallbackAcc.selected_account, { slot: "options", label: "options" });
+  assert.equal(fallbackAcc.credit.total, 999);
+
+  // 2. Configure 2 UI accounts + Cookie session JSON on a 3rd disabled slot
+  await writeFile(
+    join(f.tempDir, "plugin-auth.json"),
+    JSON.stringify({
+      xiaoyunque: { type: "api", key: ak1, metadata: { email: "主号" } },
+      "xiaoyunque#b2c3d4": { type: "api", key: ak2, metadata: { email: "二号机" } },
+      "xiaoyunque#cookie3": {
+        type: "api",
+        key: JSON.stringify({
+          cookies: [
+            { name: "sessionid", value: "secret_sess_abc123", domain: ".xiaoyunque.com" },
+            { name: "sid_tt", value: "secret_sid_xyz789", domain: ".xiaoyunque.com" },
+          ],
+          localStorage: [{ key: "xmst", value: "ms_tok_from_session_json" }],
+        }),
+        metadata: { email: "网页号", mode: "cookie" },
+      },
+    }),
+    "utf8"
+  );
+  await writeFile(
+    join(f.tempDir, "logins.json"),
+    JSON.stringify([
+      { agent: "plugin:xiaoyunque", home: "xiaoyunque", user: "主号", on: true, active: true, first: true },
+      { agent: "plugin:xiaoyunque", home: "xiaoyunque#b2c3d4", user: "二号机", on: true, active: false },
+      { agent: "plugin:xiaoyunque", home: "xiaoyunque#cookie3", user: "网页号", on: false, active: false },
+    ]),
+    "utf8"
+  );
+  await writeFile(
+    join(f.tempDir, "providers.json"),
+    JSON.stringify({
+      providers: [
+        {
+          id: "xiaoyunque",
+          accountNames: { 二号机: "剪辑专用号" },
+        },
+      ],
+    }),
+    "utf8"
+  );
+
+  // Default uses top enabled account ("主号"), while non-credential defaultModel still applies
+  const acc1 = await hooks.tool.account.execute({}, { directory: f.tempDir });
+  assert.equal(acc1.account, "主号");
+  assert.deepEqual(acc1.selected_account, { slot: "xiaoyunque", label: "主号" });
+  assert.equal(acc1.credit.total, 1001);
+
+  const modelsOffline = await hooks.tool.list_video_models.execute(
+    { offline: true },
+    { directory: f.tempDir }
+  );
+  assert.equal(modelsOffline.account, "主号");
+  assert.equal(modelsOffline.default_model, "seedance2.0_fast_vision");
+
+  // 3. Switch default account in logins.json to "二号机" (alias "剪辑专用号")
+  await writeFile(
+    join(f.tempDir, "logins.json"),
+    JSON.stringify([
+      { agent: "plugin:xiaoyunque", home: "xiaoyunque#b2c3d4", user: "二号机", on: true, active: true },
+      { agent: "plugin:xiaoyunque", home: "xiaoyunque", user: "主号", on: true, active: false },
+      { agent: "plugin:xiaoyunque", home: "xiaoyunque#cookie3", user: "网页号", on: false, active: false },
+    ]),
+    "utf8"
+  );
+  const accSwitched = await hooks.tool.account.execute({}, { directory: f.tempDir });
+  assert.equal(accSwitched.account, "剪辑专用号");
+  assert.deepEqual(accSwitched.selected_account, {
+    slot: "xiaoyunque#b2c3d4",
+    label: "剪辑专用号",
+  });
+  assert.equal(accSwitched.credit.total, 2002);
+
+  // 4. Explicit account selector: by user ("主号"), by key last-4 ("1111"), by Cookie slot, and by "options"
+  const byUser = await hooks.tool.account.execute({ account: "主号" }, { directory: f.tempDir });
+  assert.equal(byUser.credit.total, 1001);
+
+  const byHint = await hooks.tool.account.execute({ account: "1111" }, { directory: f.tempDir });
+  assert.equal(byHint.selected_account.slot, "xiaoyunque");
+  assert.equal(byHint.credit.total, 1001);
+
+  const byCookieSlot = await hooks.tool.account.execute(
+    { account: "网页号" },
+    { directory: f.tempDir }
+  );
+  assert.equal(byCookieSlot.account, "网页号");
+  assert.equal(byCookieSlot.credit.total, 2200); // Cookie commerce endpoint mock
+
+  const byOptions = await hooks.tool.account.execute(
+    { account: "options" },
+    { directory: f.tempDir }
+  );
+  assert.equal(byOptions.selected_account.slot, "options");
+  assert.equal(byOptions.credit.total, 999);
+
+  // 5. all_accounts: true lists all UI accounts + legacy options
+  const allAcc = await hooks.tool.account.execute(
+    { all_accounts: true },
+    { directory: f.tempDir }
+  );
+  assert.equal(allAcc.selected_account.slot, "xiaoyunque#b2c3d4");
+  assert.equal(allAcc.accounts.length, 4);
+  assert.equal(allAcc.accounts[0].label, "剪辑专用号");
+  assert.equal(allAcc.accounts[0].selected, true);
+  assert.equal(allAcc.accounts[0].credit.total, 2002);
+
+  // 6. Provider turned off in providers.json -> falls back to options
+  await writeFile(
+    join(f.tempDir, "providers.json"),
+    JSON.stringify({ providers: [{ id: "xiaoyunque", off: true }] }),
+    "utf8"
+  );
+  const afterOff = await hooks.tool.account.execute({}, { directory: f.tempDir });
+  assert.equal(afterOff.selected_account.slot, "options");
+  assert.equal(afterOff.credit.total, 999);
+});
+
+test("task_id -> slot sticky binding across default-account switches, plus cross-account fallback on ThreadNotFound (ret=16017)", async (t) => {
+  const f = await startFakeXYQServer(t);
+  const ak1 = "fake_ak_owner1_0000000000000000000000000000000000000000000001111";
+  const ak2 = "fake_ak_owner2_0000000000000000000000000000000000000000000002222";
+  const taskOwnerByKey = new Map();
+
+  f.state.customHandler = async (req, sendJson) => {
+    const auth = req.headers.authorization || "";
+    if (req.pathname === "/api/biz/v1/skill/submit_run") {
+      const threadId = `th_${taskOwnerByKey.size + 1}`;
+      const runId = `run_${taskOwnerByKey.size + 1}`;
+      taskOwnerByKey.set(`${threadId}:${runId}`, auth);
+      sendJson(200, {
+        ret: "0",
+        data: { run: { thread_id: threadId, run_id: runId, state: 2 } },
+      });
+      return true;
+    }
+    if (req.pathname === "/api/biz/v1/skill/get_thread") {
+      const key = `${req.body.thread_id}:${req.body.run_id}`;
+      const expectedAuth = taskOwnerByKey.get(key);
+      if (!expectedAuth || expectedAuth !== auth) {
+        sendJson(200, {
+          ret: "16017",
+          errmsg: "ThreadNotFound",
+          log_id: "log_16017",
+        });
+        return true;
+      }
+      sendJson(200, {
+        ret: "0",
+        data: {
+          thread: {
+            thread_id: req.body.thread_id,
+            run_list: [{ thread_id: req.body.thread_id, run_id: req.body.run_id, state: 3, entry_list: [] }],
+          },
+        },
+      });
+      return true;
+    }
+    return false;
+  };
+
+  await writeFile(
+    join(f.tempDir, "plugin-auth.json"),
+    JSON.stringify({
+      xiaoyunque: { type: "api", key: ak1, metadata: { email: "主号" } },
+      "xiaoyunque#slot2": { type: "api", key: ak2, metadata: { email: "二号机" } },
+    }),
+    "utf8"
+  );
+  await writeFile(
+    join(f.tempDir, "logins.json"),
+    JSON.stringify({
+      "plugin:xiaoyunque": [
+        { user: "主号", on: true, first: true },
+        { user: "二号机", on: true, first: false },
+      ],
+    }),
+    "utf8"
+  );
+
+  const hooks = await XiaoYunQuePlugin(
+    { directory: f.tempDir },
+    { baseUrl: f.baseUrl, skillBaseUrl: f.baseUrl, now: FIXED_NOW_MS }
+  );
+
+  // Submit video on "主号"
+  const created = await hooks.tool.create_video.execute(
+    { prompt: "Sticky slot test", model: "seedance2.0_fast_vision", duration: 4 },
+    { directory: f.tempDir }
+  );
+  assert.equal(created.account, "主号");
+
+  // Switch default account in UI to "二号机"
+  await writeFile(
+    join(f.tempDir, "logins.json"),
+    JSON.stringify({
+      "plugin:xiaoyunque": [
+        { user: "二号机", on: true, first: true },
+        { user: "主号", on: true, first: false },
+      ],
+    }),
+    "utf8"
+  );
+
+  // Sticky binding: get_task without `account` goes directly to "主号" without hitting "二号机"
+  const reqCountBeforeSticky = f.state.requests.length;
+  const stickyRes = await hooks.tool.get_task.execute(
+    { task_id: created.task_id },
+    { directory: f.tempDir }
+  );
+  assert.equal(stickyRes.account, "主号");
+  assert.equal(stickyRes.status, "completed");
+  assert.equal(
+    f.state.requests.length - reqCountBeforeSticky,
+    1,
+    "Sticky task_id -> slot binding should hit owner account in 1 request"
+  );
+
+  // Simulate daemon restart (fresh plugin instance with empty _taskSlotMap):
+  // Default is "二号机", which returns ret=16017 ThreadNotFound -> falls back to "主号" and binds!
+  const freshHooks = await XiaoYunQuePlugin(
+    { directory: f.tempDir },
+    { baseUrl: f.baseUrl, skillBaseUrl: f.baseUrl, now: FIXED_NOW_MS }
+  );
+  const fallbackRes = await freshHooks.tool.wait_task.execute(
+    { task_id: created.task_id, timeout_seconds: 2, interval_seconds: 0.05 },
+    { directory: f.tempDir }
+  );
+  assert.equal(fallbackRes.account, "主号");
+  assert.equal(fallbackRes.status, "completed");
+});
+
+test("model schema audit completions: Seedance_2.5_draft edit rejection, Seedance_1.0_fast reference/seed rejection, happyhorse-1.1 HEIC & seed rules, and wan3.0 20MB/GIF/30s/pricing rules", async (t) => {
+  const f = await startFakeXYQServer(t);
+  const hooks = await XiaoYunQuePlugin(
+    { directory: f.tempDir },
+    {
+      baseUrl: f.baseUrl,
+      skillBaseUrl: f.baseUrl,
+      accessKey: f.state.validAccessKey,
+      now: FIXED_NOW_MS,
+    }
+  );
+
+  // 1. Seedance_2.5_draft rejects mode='edit' (disabled online), while Seedance_2.5 accepts edit
+  await assert.rejects(
+    () =>
+      hooks.tool.create_video.execute({
+        prompt: "Edit test",
+        model: "Seedance_2.5_draft",
+        mode: "edit",
+        reference_videos: [{ asset_id: "v1" }],
+      }),
+    /video edit mode is only supported on Seedance_2\.5/
+  );
+
+  // 2. Seedance_1.0_fast rejects reference_generation and seed
+  await assert.rejects(
+    () =>
+      hooks.tool.create_video.execute({
+        prompt: "Ref on 1.0",
+        model: "Seedance_1.0_fast",
+        reference_images: [{ asset_id: "img1" }],
+      }),
+    /reference generation is not supported on "Seedance_1\.0_fast"/
+  );
+  await assert.rejects(
+    () =>
+      hooks.tool.create_video.execute({
+        prompt: "Seed on 1.0",
+        model: "Seedance_1.0_fast",
+        seed: 42,
+      }),
+    /Invalid 'seed'.*Seedance_1\.0_fast.*does not support 'seed'/
+  );
+
+  // 3. happyhorse-1.1 rejects seed and .gif, accepts HEIC in upload_image
+  await assert.rejects(
+    () =>
+      hooks.tool.create_video.execute({
+        prompt: "Seed on happyhorse",
+        model: "happyhorse-1.1",
+        seed: 123,
+      }),
+    /Invalid 'seed'.*happyhorse-1\.1.*does not support 'seed'/
+  );
+  await assert.rejects(
+    () =>
+      hooks.tool.create_video.execute({
+        prompt: "GIF on happyhorse",
+        model: "happyhorse-1.1",
+        reference_images: ["https://example.com/anim.gif"],
+      }),
+    /Invalid 'reference_images\[0\]' format \("\.gif"\) for model "happyhorse-1\.1"/
+  );
+
+  const heicPath = join(f.tempDir, "photo.heic");
+  // Valid ISO-BMFF ftyp box with 'heic' brand
+  const heicHeader = Buffer.from([
+    0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x68, 0x65, 0x69, 0x63,
+    0x00, 0x00, 0x00, 0x00,
+  ]);
+  await writeFile(heicPath, heicHeader);
+  const uploadedHeic = await hooks.tool.upload_image.execute(
+    { path: heicPath },
+    { directory: f.tempDir }
+  );
+  assert.equal(uploadedHeic.format, "heic");
+
+  // 4. wan3.0 rejects .gif, rejects >20MB image, enforces ref_video <=15s & input+output <=30s, and prices output_plus_reference
+  await assert.rejects(
+    () =>
+      hooks.tool.create_video.execute({
+        prompt: "GIF on wan",
+        model: "wan3.0",
+        first_frame: { asset_id: "a1", format: "gif" },
+      }),
+    /Invalid 'first_frame' format \("gif"\) for model "wan3\.0"/
+  );
+  await assert.rejects(
+    () =>
+      hooks.tool.create_video.execute({
+        prompt: "25MB on wan",
+        model: "wan3.0",
+        first_frame: { asset_id: "a2", size_bytes: 25 * 1024 * 1024 },
+      }),
+    /exceeds the 20 MB limit/
+  );
+  await assert.rejects(
+    () =>
+      hooks.tool.estimate_credits.execute({
+        model: "wan3.0",
+        duration: 20,
+        ref_video_seconds: 12,
+      }),
+    /Combined reference video duration \(12s\) \+ output duration \(20s\) = 32s exceeds the 30s limit for model "wan3\.0"/
+  );
+
+  const estWanRef = await hooks.tool.estimate_credits.execute(
+    {
+      model: "wan3.0",
+      resolution: "720p",
+      duration: 10,
+      ref_video_seconds: 5,
+    },
+    { directory: f.tempDir }
+  );
+  assert.equal(estWanRef.pricing_policy, "output_plus_reference");
+  assert.equal(estWanRef.per_second, 14);
+  assert.equal(estWanRef.total, 14 * (10 + 5));
+});
+
+
 

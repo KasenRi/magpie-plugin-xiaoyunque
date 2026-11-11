@@ -1,12 +1,13 @@
 {
   "name": "opencode-xiaoyunque",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Unofficial Magpie / OpenCode tools plugin for XiaoYunQue (小云雀 / Pippit CN, Seedance 2.5 & 2.0 video generation)",
   "type": "module",
   "main": "./index.mjs",
   "files": [
     "index.mjs",
     "src",
+    "skills",
     "docs/API.md",
     "README.md",
     "LICENSE"

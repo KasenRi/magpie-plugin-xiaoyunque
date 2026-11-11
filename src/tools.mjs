@@ -25,7 +25,7 @@ export const RUN_STATE_MAP = {
   8: "running",
 };
 
-const ALLOWED_IMAGE_FORMATS = new Set(["jpg", "jpeg", "png", "webp", "bmp", "gif"]);
+const ALLOWED_IMAGE_FORMATS = new Set(["jpg", "jpeg", "png", "webp", "bmp", "gif", "heic", "heif"]);
 
 function omitUndefined(obj) {
   const out = {};
@@ -79,11 +79,34 @@ function detectImageFormatAndMime(buffer, filenameHint = "", contentTypeHeader =
     ) {
       return { format: "webp", mime: "image/webp", ext: ".webp" };
     }
+    // HEIC / HEIF ISO-BMFF ftyp box
+    if (
+      buffer.length >= 12 &&
+      buffer[4] === 0x66 &&
+      buffer[5] === 0x74 &&
+      buffer[6] === 0x79 &&
+      buffer[7] === 0x70
+    ) {
+      const brand = buffer.subarray(8, 12).toString("ascii").toLowerCase();
+      if (["heic", "heix", "hevc", "hevx"].includes(brand)) {
+        return { format: "heic", mime: "image/heic", ext: ".heic" };
+      }
+      if (["mif1", "msf1", "heif"].includes(brand)) {
+        return { format: "heif", mime: "image/heif", ext: ".heif" };
+      }
+    }
   }
 
   const ext = extname(filenameHint || "").replace(/^\./, "").toLowerCase();
   if (ext && ALLOWED_IMAGE_FORMATS.has(ext)) {
-    const mime = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : `image/${ext}`;
+    const mime =
+      ext === "jpg" || ext === "jpeg"
+        ? "image/jpeg"
+        : ext === "heic"
+        ? "image/heic"
+        : ext === "heif"
+        ? "image/heif"
+        : `image/${ext}`;
     return { format: ext, mime, ext: `.${ext === "jpeg" ? "jpg" : ext}` };
   }
 
@@ -101,17 +124,17 @@ function detectImageFormatAndMime(buffer, filenameHint = "", contentTypeHeader =
 
   if (ext && !ALLOWED_IMAGE_FORMATS.has(ext)) {
     throw new Error(
-      `Unsupported image format ".${ext}". Allowed image formats: jpg, jpeg, png, webp, bmp, gif.`
+      `Unsupported image format ".${ext}". Allowed image formats: jpg, jpeg, png, webp, bmp, gif, heic, heif.`
     );
   }
   if (headerType && !headerType.startsWith("image/") && headerType !== "application/octet-stream") {
     throw new Error(
-      `Unsupported image content-type "${headerType}". Allowed image formats: jpg, jpeg, png, webp, bmp, gif.`
+      `Unsupported image content-type "${headerType}". Allowed image formats: jpg, jpeg, png, webp, bmp, gif, heic, heif.`
     );
   }
 
   throw new Error(
-    "Unrecognized image format: input does not match jpg, jpeg, png, webp, bmp, or gif."
+    "Unrecognized image format: input does not match jpg, jpeg, png, webp, bmp, gif, heic, or heif."
   );
 }
 
@@ -133,7 +156,13 @@ function detectGenericMediaMimeAndExt(assetType, filenameHint = "", contentTypeH
   return { format: "bin", mime: "application/octet-stream", ext: ext || ".bin" };
 }
 
-export async function uploadMediaHelper(client, args = {}, { assetType = "2", signal } = {}) {
+export async function uploadMediaHelper(
+  client,
+  args = {},
+  { assetType = "2", maxBytes = MAX_UPLOAD_BYTES, acceptedFormats = null, modelKey = null, signal } = {}
+) {
+  const effectiveMaxBytes = Number(maxBytes) > 0 ? Number(maxBytes) : MAX_UPLOAD_BYTES;
+  const maxMb = Math.round(effectiveMaxBytes / (1024 * 1024));
   const hasUrl = typeof args.url === "string" && args.url.trim().length > 0;
   const hasPath = typeof args.path === "string" && args.path.trim().length > 0;
   const hasBase64 = typeof args.base64 === "string" && args.base64.trim().length > 0;
@@ -163,8 +192,8 @@ export async function uploadMediaHelper(client, args = {}, { assetType = "2", si
       throw new Error(`Failed to download media from URL (HTTP ${res.status} ${res.statusText}).`);
     }
     const contentLength = Number(res.headers.get("content-length") || 0);
-    if (contentLength > MAX_UPLOAD_BYTES) {
-      throw new Error(`File size (${contentLength} bytes) exceeds the 30 MB maximum limit.`);
+    if (contentLength > effectiveMaxBytes) {
+      throw new Error(`File size (${contentLength} bytes) exceeds the ${maxMb} MB maximum limit${modelKey ? ` for model "${modelKey}"` : ""}.`);
     }
     contentTypeHint = res.headers.get("content-type") || "";
     const ab = await res.arrayBuffer();
@@ -180,8 +209,8 @@ export async function uploadMediaHelper(client, args = {}, { assetType = "2", si
   } else if (hasPath) {
     const filePath = args.path.trim();
     const info = await stat(filePath);
-    if (info.size > MAX_UPLOAD_BYTES) {
-      throw new Error(`Local file "${basename(filePath)}" (${info.size} bytes) exceeds the 30 MB maximum limit.`);
+    if (info.size > effectiveMaxBytes) {
+      throw new Error(`Local file "${basename(filePath)}" (${info.size} bytes) exceeds the ${maxMb} MB maximum limit${modelKey ? ` for model "${modelKey}"` : ""}.`);
     }
     buffer = await readFile(filePath);
     if (!filenameHint) {
@@ -200,14 +229,27 @@ export async function uploadMediaHelper(client, args = {}, { assetType = "2", si
   if (!buffer || buffer.length === 0) {
     throw new Error("Upload data is empty (0 bytes).");
   }
-  if (buffer.length > MAX_UPLOAD_BYTES) {
-    throw new Error(`File size (${buffer.length} bytes) exceeds the 30 MB maximum limit.`);
+  if (buffer.length > effectiveMaxBytes) {
+    throw new Error(`File size (${buffer.length} bytes) exceeds the ${maxMb} MB maximum limit${modelKey ? ` for model "${modelKey}"` : ""}.`);
   }
 
   const { format, mime, ext } =
     String(assetType) === "2"
       ? detectImageFormatAndMime(buffer, filenameHint, contentTypeHint)
       : detectGenericMediaMimeAndExt(String(assetType), filenameHint, contentTypeHint);
+
+  if (String(assetType) === "2" && Array.isArray(acceptedFormats) && acceptedFormats.length > 0) {
+    const allowedSet = new Set(
+      acceptedFormats.flatMap((f) =>
+        f === "jpg" || f === "jpeg" ? ["jpg", "jpeg"] : [String(f).toLowerCase()]
+      )
+    );
+    if (!allowedSet.has(String(format).toLowerCase())) {
+      throw new Error(
+        `Unsupported image format "${format}"${modelKey ? ` for model "${modelKey}"` : ""}. Allowed image formats: ${acceptedFormats.join(", ")}.`
+      );
+    }
+  }
 
   let finalFilename = filenameHint || `upload${ext}`;
   if (!extname(finalFilename)) {
@@ -273,7 +315,11 @@ export async function uploadImageHelper(client, args = {}, signal) {
   };
 }
 
-async function resolveMediaAssetInput(client, item, { assetType = "2", signal } = {}) {
+async function resolveMediaAssetInput(
+  client,
+  item,
+  { assetType = "2", maxBytes, acceptedFormats, modelKey, signal } = {}
+) {
   if (item && typeof item === "object") {
     return omitUndefined({
       asset_id: item.asset_id !== undefined ? String(item.asset_id) : undefined,
@@ -292,13 +338,14 @@ async function resolveMediaAssetInput(client, item, { assetType = "2", signal } 
     });
   }
   const str = String(item || "").trim();
+  const uploadOpts = { assetType, maxBytes, acceptedFormats, modelKey, signal };
   if (/^https?:\/\//i.test(str)) {
-    return uploadMediaHelper(client, { url: str }, { assetType, signal });
+    return uploadMediaHelper(client, { url: str }, uploadOpts);
   }
   if (/^data:/i.test(str)) {
-    return uploadMediaHelper(client, { base64: str }, { assetType, signal });
+    return uploadMediaHelper(client, { base64: str }, uploadOpts);
   }
-  return uploadMediaHelper(client, { path: str }, { assetType, signal });
+  return uploadMediaHelper(client, { path: str }, uploadOpts);
 }
 
 function stripAssetUrlsFromParam(param) {
@@ -967,88 +1014,330 @@ const GENERATION_PARAM_PROPERTIES = {
     enum: ["auto", "t2v", "first_last_frame", "reference", "edit", "extend"],
     description:
       "Generation mode (生成模式, default 'auto'): 'auto' (first_frame -> first_last_frame, reference_images/videos/audios -> reference, else t2v), " +
-      "'t2v' (文生视频), 'first_last_frame' (首尾帧模式, generate_type=1), 'reference' (全能参考生成), 'edit' (视频编辑, Seedance 2.5 only), 'extend' (视频延长, Seedance 2.5 only).",
+      "'t2v' (文生视频), 'first_last_frame' (首尾帧模式, generate_type=1), 'reference' (全能参考生成), 'edit' (视频编辑, Seedance_2.5 only), 'extend' (视频延长, Seedance_2.5 / Seedance_2.5_draft only).",
   },
   first_frame: {
     ...MEDIA_ITEM_SCHEMA,
     description:
-      "First frame image (首帧图片) for 'first_last_frame' mode: HTTP(S) URL, local file path, base64 data URI, or {asset_id,...} from upload_image.",
+      "First frame image (首帧图片) for 'first_last_frame' mode: HTTP(S) URL, local file path, base64 data URI, or {asset_id,...} from upload_image (must belong to the same account).",
   },
   last_frame: {
     ...MEDIA_ITEM_SCHEMA,
     description:
-      "Last frame image (尾帧图片) for 'first_last_frame' mode: HTTP(S) URL, local file path, base64 data URI, or {asset_id,...} from upload_image.",
+      "Last frame image (尾帧图片) for 'first_last_frame' mode: HTTP(S) URL, local file path, base64 data URI, or {asset_id,...} from upload_image (must belong to the same account).",
   },
   reference_images: {
     type: "array",
     items: MEDIA_ITEM_SCHEMA,
     description:
-      "Reference images (参考图片列表, max 30 on Seedance 2.5 / max 9 on Seedance 2.0; reference in prompt as [@图片1], [@图片2]). Each item may be a URL, local path, base64 data URI, or {asset_id,...}.",
+      "Reference images (参考图片列表, max 30 on Seedance 2.5 / max 10 on Wan 3.0 / max 9 on Seedance 2.0 & HappyHorse 1.1; reference in prompt as [@图片1], [@图片2]). Each item may be a URL, local path, base64 data URI, or {asset_id,...} uploaded under the same account.",
   },
   reference_videos: {
     type: "array",
     items: MEDIA_ITEM_SCHEMA,
     description:
-      "Reference videos (参考视频列表, max 10 on Seedance 2.5 / max 3 on Seedance 2.0; reference in prompt as [@视频1]). Each item may be a URL, local path, base64 data URI, or {asset_id,...}.",
+      "Reference videos (参考视频列表, max 10 on Seedance 2.5 / max 5 on Wan 3.0 / max 3 on Seedance 2.0; reference in prompt as [@视频1]). Each item may be a URL, local path, base64 data URI, or {asset_id,...} uploaded under the same account.",
   },
   reference_audios: {
     type: "array",
     items: MEDIA_ITEM_SCHEMA,
     description:
-      "Reference audios (参考音频列表, max 10 on Seedance 2.5 / max 3 on Seedance 2.0; reference in prompt as [@音频1]). Each item may be a URL, local path, base64 data URI, or {asset_id,...}.",
+      "Reference audios (参考音频列表, max 10 on Seedance 2.5 / max 3 on Seedance 2.0; reference in prompt as [@音频1]). Each item may be a URL, local path, base64 data URI, or {asset_id,...} uploaded under the same account.",
   },
   seed: {
     type: "integer",
-    description: "Optional random seed integer (随机种子).",
+    description: "Optional random seed integer (随机种子; not supported on 'happyhorse-1.1' or 'Seedance_1.0_fast').",
   },
 };
 
-export function createTools(client) {
+const ACCOUNT_ARG_PROPERTY = {
+  account: {
+    type: "string",
+    description:
+      "Optional account selector (可选：指定使用哪个已配置的小云雀账号；可填「模型 → 供应商」页面上的账号备注名、自定义别名、槽位键如 'xiaoyunque' / 'xiaoyunque#xxxxxx'、密钥末 4 位，或 'options' 表示回退 plugins.json 配置；不填默认使用页面当前置顶启用的账号).",
+  },
+};
+
+async function querySingleAccountInfo(client, signal) {
+  if (client.isAccessKeyMode()) {
+    const creditData = await client.post("/api/biz/v1/skill/get_credit_balance", {}, { signal });
+    const credit = normalizeCreditBalance(creditData);
+    return {
+      auth_mode: "access_key",
+      team_id: client.teamId || "0",
+      credit,
+    };
+  }
+
+  const [workspace, creditData, vipData] = await Promise.all([
+    client.getWorkspaceInfo(signal),
+    client.post("/commerce/v1/benefits/user_credit", {}, { commerce: true, signal }),
+    client.post("/commerce/v1/subscription/user_info", {}, { commerce: true, signal }),
+  ]);
+
+  const credit = normalizeCreditBalance(creditData);
+  const { cur_vip_level, vip_level_name } = formatVipLevel(vipData?.cur_vip_level);
+
+  return {
+    workspace: {
+      workspace_id: workspace.workspace_id,
+      space_id: workspace.space_id,
+      space_idc: workspace.space_idc,
+    },
+    credit,
+    vip: {
+      flag: Boolean(vipData?.flag),
+      cur_vip_level,
+      vip_level_name,
+      end_time: Number(vipData?.end_time ?? 0) || 0,
+    },
+  };
+}
+
+function isTaskNotFoundError(err) {
+  if (!err || err.isLoginError || err.isAntiBot) return false;
+  const ret = err.ret !== undefined && err.ret !== null ? String(err.ret) : "";
+  if (ret === "16017" || ret === "16029" || ret === "14004" || err.status === 404) {
+    return true;
+  }
+  const msg = String(err.errmsg || err.message || "");
+  return /Run not found for thread_id=|thread.*not.*found|run.*not.*found|owner.*mismatch|线程不存在|任务不存在|无权访问/i.test(
+    msg
+  );
+}
+
+export function createTools(clientOrPool) {
+  const hasPool = Boolean(clientOrPool && typeof clientOrPool.resolve === "function");
+
+  function resolveTarget({ account, taskId, directory } = {}) {
+    if (!hasPool) {
+      return {
+        client: clientOrPool,
+        slot: null,
+        label: null,
+        boundByTask: false,
+      };
+    }
+    return clientOrPool.resolve({ account, taskId, directory });
+  }
+
+  function resolveForTask(account, ids, directory) {
+    if (!hasPool) {
+      return {
+        client: clientOrPool,
+        slot: null,
+        label: null,
+        boundByTask: false,
+      };
+    }
+    if (account && String(account).trim()) {
+      return clientOrPool.resolve({ account, directory });
+    }
+    const byTask = clientOrPool.resolve({ taskId: ids.task_id, directory });
+    if (byTask.boundByTask) return byTask;
+    const byRun = clientOrPool.resolve({ taskId: ids.run_id, directory });
+    if (byRun.boundByTask) return byRun;
+    return byTask;
+  }
+
+  function withAccountTag(result, label) {
+    if (!hasPool || !label || !result || typeof result !== "object") {
+      return result;
+    }
+    return {
+      account: label,
+      ...result,
+    };
+  }
+
+  async function executeTaskBoundOp(args = {}, ctx, opFn) {
+    const ids = parseTaskIdentifier(args);
+    const directory = ctx?.directory;
+    const primary = resolveForTask(args?.account, ids, directory);
+
+    try {
+      const res = await opFn(primary.client, ids);
+      if (hasPool && primary.slot) {
+        clientOrPool.rememberTask(ids.task_id, primary.slot);
+        clientOrPool.rememberTask(ids.run_id, primary.slot);
+      }
+      return withAccountTag(res, primary.label);
+    } catch (err) {
+      const canFallback =
+        hasPool &&
+        !(args?.account && String(args.account).trim()) &&
+        !primary.boundByTask &&
+        isTaskNotFoundError(err) &&
+        typeof clientOrPool.listFallbackTargets === "function";
+      if (!canFallback) {
+        throw err;
+      }
+
+      const fallbacks = clientOrPool.listFallbackTargets(primary.slot, directory);
+      for (const cand of fallbacks) {
+        try {
+          const res = await opFn(cand.client, ids);
+          if (cand.slot) {
+            clientOrPool.rememberTask(ids.task_id, cand.slot);
+            clientOrPool.rememberTask(ids.run_id, cand.slot);
+          }
+          return withAccountTag(res, cand.label);
+        } catch (candErr) {
+          if (isTaskNotFoundError(candErr)) {
+            continue;
+          }
+          throw candErr;
+        }
+      }
+
+      throw err;
+    }
+  }
+
   return {
     account: {
       description:
         "Query your XiaoYunQue (小云雀) credit balance (POST /api/biz/v1/skill/get_credit_balance in Access-Key mode; " +
-        "or workspace info + credit breakdown + VIP subscription status in Cookie mode). Never returns sensitive UIDs. " +
-        "(查询小云雀积分余额、工作空间及会员状态)",
+        "or workspace info + credit breakdown + VIP subscription status in Cookie mode). Set all_accounts=true to list all configured accounts and balances. Never returns sensitive UIDs. " +
+        "(查询小云雀积分余额、工作空间及会员状态；支持多账号选择与 all_accounts 汇总查询)",
       args: {
         type: "object",
-        properties: {},
+        properties: {
+          ...ACCOUNT_ARG_PROPERTY,
+          all_accounts: {
+            type: "boolean",
+            description:
+              "When true, list all configured XiaoYunQue accounts, their enabled/default status, and credit balance summary (设为 true 时列出所有已配置账号及余额摘要, default false).",
+          },
+        },
         additionalProperties: false,
       },
-      async execute(_args, ctx) {
+      async execute(args = {}, ctx) {
         const signal = ctx?.abort;
-        if (client.isAccessKeyMode()) {
-          const creditData = await client.post("/api/biz/v1/skill/get_credit_balance", {}, { signal });
-          const credit = normalizeCreditBalance(creditData);
+        const directory = ctx?.directory;
+
+        if (args?.all_accounts === true) {
+          if (!hasPool) {
+            const info = await querySingleAccountInfo(clientOrPool, signal);
+            return {
+              account: "default",
+              selected_account: { slot: "default", label: "default" },
+              accounts: [
+                {
+                  slot: "default",
+                  label: "default",
+                  enabled: true,
+                  first: true,
+                  selected: true,
+                  auth_mode: clientOrPool.isAccessKeyMode() ? "access_key" : "cookie",
+                  ...info,
+                },
+              ],
+            };
+          }
+
+          const selected = resolveTarget({ account: args?.account, directory });
+          const uiAccounts = clientOrPool.listAccounts(directory);
+          const legacyClient = clientOrPool.getLegacyClient();
+          const hasLegacyCreds =
+            typeof legacyClient?.hasCredentials === "function" && legacyClient.hasCredentials();
+
+          if (uiAccounts.length === 0 && !hasLegacyCreds) {
+            // Trigger standard missing-credentials instruction message
+            await querySingleAccountInfo(legacyClient, signal);
+          }
+
+          const targets = uiAccounts.map((acc) => ({
+            slot: acc.slot,
+            label: acc.label,
+            user: acc.user || null,
+            alias: acc.alias || null,
+            hint: acc.keyHint || null,
+            enabled: acc.enabled,
+            first: acc.first,
+            client: clientOrPool.materializeAccount(acc).client,
+          }));
+
+          if (hasLegacyCreds) {
+            const anyUiEnabled = uiAccounts.some((a) => a.enabled);
+            targets.push({
+              slot: "options",
+              label: "options",
+              user: "options",
+              alias: null,
+              hint: null,
+              enabled: !anyUiEnabled,
+              first: !anyUiEnabled,
+              client: legacyClient,
+            });
+          }
+
+          const rows = await Promise.all(
+            targets.map(async (t) => {
+              const authMode = t.client.isAccessKeyMode() ? "access_key" : "cookie";
+              try {
+                const info = await querySingleAccountInfo(t.client, signal);
+                return omitUndefined({
+                  slot: t.slot,
+                  label: t.label,
+                  user: t.user ?? undefined,
+                  alias: t.alias ?? undefined,
+                  hint: t.hint ?? undefined,
+                  enabled: t.enabled,
+                  first: t.first,
+                  selected: t.slot === selected.slot,
+                  auth_mode: authMode,
+                  ...info,
+                });
+              } catch (err) {
+                const safeErr =
+                  typeof t.client?.redact === "function"
+                    ? t.client.redact(String(err?.message || err))
+                    : String(err?.message || err);
+                return omitUndefined({
+                  slot: t.slot,
+                  label: t.label,
+                  user: t.user ?? undefined,
+                  alias: t.alias ?? undefined,
+                  hint: t.hint ?? undefined,
+                  enabled: t.enabled,
+                  first: t.first,
+                  selected: t.slot === selected.slot,
+                  auth_mode: authMode,
+                  credit: null,
+                  error: safeErr,
+                });
+              }
+            })
+          );
+
           return {
-            auth_mode: "access_key",
-            team_id: client.teamId || "0",
-            credit,
+            account: selected.label,
+            selected_account: {
+              slot: selected.slot,
+              label: selected.label,
+            },
+            accounts: rows,
           };
         }
 
-        const [workspace, creditData, vipData] = await Promise.all([
-          client.getWorkspaceInfo(signal),
-          client.post("/commerce/v1/benefits/user_credit", {}, { commerce: true, signal }),
-          client.post("/commerce/v1/subscription/user_info", {}, { commerce: true, signal }),
-        ]);
-
-        const credit = normalizeCreditBalance(creditData);
-        const { cur_vip_level, vip_level_name } = formatVipLevel(vipData?.cur_vip_level);
-
+        const target = resolveTarget({ account: args?.account, directory });
+        const info = await querySingleAccountInfo(target.client, signal);
+        const includeAccountMeta =
+          hasPool &&
+          (Boolean(directory || clientOrPool.defaultDir) ||
+            args?.account !== undefined ||
+            target.slot !== "options");
+        if (!includeAccountMeta) {
+          return info;
+        }
         return {
-          workspace: {
-            workspace_id: workspace.workspace_id,
-            space_id: workspace.space_id,
-            space_idc: workspace.space_idc,
+          account: target.label,
+          selected_account: {
+            slot: target.slot,
+            label: target.label,
           },
-          credit,
-          vip: {
-            flag: Boolean(vipData?.flag),
-            cur_vip_level,
-            vip_level_name,
-            end_time: Number(vipData?.end_time ?? 0) || 0,
-          },
+          ...info,
         };
       },
     },
@@ -1062,6 +1351,7 @@ export function createTools(client) {
       args: {
         type: "object",
         properties: {
+          ...ACCOUNT_ARG_PROPERTY,
           seedance_only: {
             type: "boolean",
             description: "Only return models whose key contains 'seedance' (仅列出 Seedance 系列模型, default true).",
@@ -1080,6 +1370,10 @@ export function createTools(client) {
       },
       async execute(args = {}, ctx) {
         const signal = ctx?.abort;
+        const { client, label } = resolveTarget({
+          account: args?.account,
+          directory: ctx?.directory,
+        });
         const seedanceOnly = args?.seedance_only !== undefined ? Boolean(args.seedance_only) : true;
         const useOffline = Boolean(args?.offline) || !client.hasCredentials();
 
@@ -1088,12 +1382,15 @@ export function createTools(client) {
           const filtered = seedanceOnly
             ? allStatic.filter((m) => m.key.toLowerCase().includes("seedance"))
             : allStatic;
-          return {
-            source: "static",
-            default_model: client.defaultModel,
-            seedance_only: seedanceOnly,
-            models: filtered,
-          };
+          return withAccountTag(
+            {
+              source: "static",
+              default_model: client.defaultModel,
+              seedance_only: seedanceOnly,
+              models: filtered,
+            },
+            label
+          );
         }
 
         let liveRes;
@@ -1182,30 +1479,38 @@ export function createTools(client) {
           await Promise.all(Array.from({ length: Math.min(concurrency, tasks.length) }, () => worker()));
         }
 
-        return {
-          source: "live",
-          default_model: client.defaultModel,
-          seedance_only: seedanceOnly,
-          models,
-        };
+        return withAccountTag(
+          {
+            source: "live",
+            default_model: client.defaultModel,
+            seedance_only: seedanceOnly,
+            models,
+          },
+          label
+        );
       },
     },
 
     upload_image: {
       description:
-        "Upload an image (from an HTTP/HTTPS URL, local file path, or base64 string; max 30 MB; jpg/jpeg/png/webp/bmp/gif) to XiaoYunQue " +
+        "Upload an image (from an HTTP/HTTPS URL, local file path, or base64 string; max 30 MB, or max 20 MB on wan3.0; jpg/jpeg/png/webp/bmp/gif/heic/heif) to XiaoYunQue " +
         "(POST /api/biz/v1/skill/upload_file in Access-Key mode or /api/web/v1/common/upload_file in Cookie mode) and return {asset_id, pippit_asset_id, url, width, height, format} " +
-        "for use in create_video. (上传参考图片或首尾帧图片到小云雀，最大 30MB)",
+        "for use in create_video. Note: uploaded assets belong to the uploading account — pass the same 'account' to create_video. (上传参考图片或首尾帧图片到小云雀；返回的素材归属该上传账号，生成时须使用同一账号)",
       args: {
         type: "object",
         properties: {
+          account: {
+            type: "string",
+            description:
+              "Optional account selector (可选：指定上传到哪个小云雀账号；上传返回的 asset_id / pippit_asset_id 与该账号绑定，后续调用 create_video 时必须使用同一个账号).",
+          },
           url: {
             type: "string",
             description: "HTTP(S) URL of an image to download and upload to XiaoYunQue.",
           },
           path: {
             type: "string",
-            description: "Local file path to an image (jpg, jpeg, png, webp, bmp, gif).",
+            description: "Local file path to an image (jpg, jpeg, png, webp, bmp, gif, heic, heif).",
           },
           base64: {
             type: "string",
@@ -1219,7 +1524,12 @@ export function createTools(client) {
         additionalProperties: false,
       },
       async execute(args = {}, ctx) {
-        return uploadImageHelper(client, args, ctx?.abort);
+        const { client, label } = resolveTarget({
+          account: args?.account,
+          directory: ctx?.directory,
+        });
+        const uploaded = await uploadImageHelper(client, args, ctx?.abort);
+        return withAccountTag(uploaded, label);
       },
     },
 
@@ -1233,6 +1543,7 @@ export function createTools(client) {
       args: {
         type: "object",
         properties: {
+          ...ACCOUNT_ARG_PROPERTY,
           prompt: {
             type: "string",
             description: "Optional prompt string.",
@@ -1242,13 +1553,17 @@ export function createTools(client) {
             type: "number",
             minimum: 0,
             description:
-              "Total duration in seconds of attached reference videos (参考视频总秒数, used by seedance2.0_direct / seedance2.0_fast_direct output_plus_reference pricing).",
+              "Total duration in seconds of attached reference videos (参考视频总秒数, used when model pricing_policy is 'output_plus_reference' and for wan3.0 15s/30s duration checks).",
           },
         },
         additionalProperties: false,
       },
       async execute(args = {}, ctx) {
         const signal = ctx?.abort;
+        const { client, label } = resolveTarget({
+          account: args?.account,
+          directory: ctx?.directory,
+        });
         const resolved = resolveAndValidateVideoParams(args, {
           defaultModel: client.defaultModel,
           requirePrompt: false,
@@ -1288,20 +1603,23 @@ export function createTools(client) {
           const total = Math.ceil(perSecond * billableSeconds);
           const enoughBalance = balance.total >= total;
 
-          return {
-            model: resolved.model,
-            resolution: hasResDim ? resolved.effective_resolution : null,
-            duration: effectiveDuration,
-            has_refer_video: hasReferVideo,
-            ref_video_seconds: refVideoSeconds,
-            pricing_policy: pricingPolicy,
-            per_second: perSecond,
-            total,
-            estimated_credits: total,
-            check_deduct_status: enoughBalance ? 1 : 0,
-            enough_balance: enoughBalance,
-            balance,
-          };
+          return withAccountTag(
+            {
+              model: resolved.model,
+              resolution: hasResDim ? resolved.effective_resolution : null,
+              duration: effectiveDuration,
+              has_refer_video: hasReferVideo,
+              ref_video_seconds: refVideoSeconds,
+              pricing_policy: pricingPolicy,
+              per_second: perSecond,
+              total,
+              estimated_credits: total,
+              check_deduct_status: enoughBalance ? 1 : 0,
+              enough_balance: enoughBalance,
+              balance,
+            },
+            label
+          );
         }
 
         const authBody = omitUndefined({
@@ -1326,20 +1644,23 @@ export function createTools(client) {
         const balance = normalizeCreditBalance(creditData);
         const checkDeductStatus = authRes?.check_deduct_status ?? null;
 
-        return {
-          model: resolved.model,
-          resolution: hasResDim ? resolved.effective_resolution : null,
-          duration: effectiveDuration,
-          has_refer_video: hasReferVideo,
-          ref_video_seconds: refVideoSeconds,
-          pricing_policy: pricingPolicy,
-          per_second: perSecond,
-          total,
-          estimated_credits: total,
-          check_deduct_status: checkDeductStatus,
-          enough_balance: checkDeductStatus !== null ? checkDeductStatus === 1 : balance.total >= total,
-          balance,
-        };
+        return withAccountTag(
+          {
+            model: resolved.model,
+            resolution: hasResDim ? resolved.effective_resolution : null,
+            duration: effectiveDuration,
+            has_refer_video: hasReferVideo,
+            ref_video_seconds: refVideoSeconds,
+            pricing_policy: pricingPolicy,
+            per_second: perSecond,
+            total,
+            estimated_credits: total,
+            check_deduct_status: checkDeductStatus,
+            enough_balance: checkDeductStatus !== null ? checkDeductStatus === 1 : balance.total >= total,
+            balance,
+          },
+          label
+        );
       },
     },
 
@@ -1348,10 +1669,15 @@ export function createTools(client) {
         "Submit a video generation task on XiaoYunQue (POST /api/biz/v1/skill/submit_run in Access-Key mode or /api/biz/v1/agent/submit_run in Cookie mode). " +
         "Supports Seedance 2.5, Seedance 2.5 Draft (two-stage 480p draft -> final upgrade via draft_task_id), Seedance 2.0 VIP / Fast VIP / Mini / Mini Lite, Seedance 1.0 Fast, Wan 3.0, and HappyHorse 1.1. " +
         "Supports text-to-video (t2v), first-last-frame (first_last_frame), multi-modal reference (reference: [@图片1], [@视频1], [@音频1]), video edit (edit), and video extend (extend). " +
-        "Note: Generating videos consumes XiaoYunQue credits. (创建小云雀视频生成任务；消耗账号积分)",
+        "Note: Generating videos consumes XiaoYunQue credits; uploaded assets must come from the same account. (创建小云雀视频生成任务；消耗账号积分，复用上传素材时须与 upload_image 使用同一账号)",
       args: {
         type: "object",
         properties: {
+          account: {
+            type: "string",
+            description:
+              "Optional account selector (可选：指定使用哪个小云雀账号提交任务；任务创建成功后会自动绑定 task_id 到该账号槽位。注意：若传入 upload_image 返回的 asset_id / pippit_asset_id，必须与上传时使用同一个账号).",
+          },
           prompt: {
             type: "string",
             description:
@@ -1361,7 +1687,7 @@ export function createTools(client) {
           draft_task_id: {
             type: "string",
             description:
-              "Render task ID from a completed Seedance_2.5_draft video (样片转正任务 ID: sends {draft:false, draft_task_id, model:'Seedance_2.5_draft', prompt:''}).",
+              "Render task ID from a completed Seedance_2.5_draft video (样片转正任务 ID: sends {draft:false, draft_task_id, model:'Seedance_2.5_draft', prompt:''}; must use the same account that generated the draft).",
           },
           wait_seconds: {
             type: "number",
@@ -1375,6 +1701,10 @@ export function createTools(client) {
       },
       async execute(args = {}, ctx) {
         const signal = ctx?.abort;
+        const { client, slot, label } = resolveTarget({
+          account: args?.account,
+          directory: ctx?.directory,
+        });
         const useAccessKey = client.isAccessKeyMode();
 
         let waitSeconds = 0;
@@ -1444,18 +1774,21 @@ export function createTools(client) {
         if (resolved.isDraftUpgrade) {
           param = resolved.param;
         } else {
+          const imgUploadOpts = {
+            assetType: "2",
+            maxBytes: resolved.schema.max_image_bytes,
+            acceptedFormats: resolved.schema.accepted_image_formats,
+            modelKey: resolved.model,
+            signal,
+          };
           if (resolved.mode === "first_last_frame") {
-            images.push(
-              await resolveMediaAssetInput(client, resolved.first_frame, { assetType: "2", signal })
-            );
+            images.push(await resolveMediaAssetInput(client, resolved.first_frame, imgUploadOpts));
             if (resolved.last_frame) {
-              images.push(
-                await resolveMediaAssetInput(client, resolved.last_frame, { assetType: "2", signal })
-              );
+              images.push(await resolveMediaAssetInput(client, resolved.last_frame, imgUploadOpts));
             }
           } else {
             for (const img of resolved.reference_images) {
-              images.push(await resolveMediaAssetInput(client, img, { assetType: "2", signal }));
+              images.push(await resolveMediaAssetInput(client, img, imgUploadOpts));
             }
             for (const vid of resolved.reference_videos) {
               videos.push(await resolveMediaAssetInput(client, vid, { assetType: "1", signal }));
@@ -1606,6 +1939,11 @@ export function createTools(client) {
         }
 
         const taskId = `${returnedThreadId}:${returnedRunId}`;
+        if (hasPool && slot) {
+          clientOrPool.rememberTask(taskId, slot);
+          clientOrPool.rememberTask(String(returnedRunId), slot);
+        }
+
         const webLink = submitData?.web_thread_link ?? submitData?.run?.web_thread_link ?? undefined;
 
         const baseResult = omitUndefined({
@@ -1630,13 +1968,16 @@ export function createTools(client) {
             },
             signal
           );
-          return {
-            ...baseResult,
-            ...polled,
-          };
+          return withAccountTag(
+            {
+              ...baseResult,
+              ...polled,
+            },
+            label
+          );
         }
 
-        return baseResult;
+        return withAccountTag(baseResult, label);
       },
     },
 
@@ -1649,6 +1990,7 @@ export function createTools(client) {
       args: {
         type: "object",
         properties: {
+          ...ACCOUNT_ARG_PROPERTY,
           task_id: {
             type: "string",
             description: "Combined task ID '<thread_id>:<run_id>' returned by create_video (任务 ID).",
@@ -1673,7 +2015,7 @@ export function createTools(client) {
         additionalProperties: false,
       },
       async execute(args = {}, ctx) {
-        return getTaskHelper(client, args, ctx?.abort);
+        return executeTaskBoundOp(args, ctx, (c) => getTaskHelper(c, args, ctx?.abort));
       },
     },
 
@@ -1685,6 +2027,7 @@ export function createTools(client) {
       args: {
         type: "object",
         properties: {
+          ...ACCOUNT_ARG_PROPERTY,
           task_id: {
             type: "string",
             description: "Combined task ID '<thread_id>:<run_id>' returned by create_video (任务 ID).",
@@ -1721,7 +2064,7 @@ export function createTools(client) {
         additionalProperties: false,
       },
       async execute(args = {}, ctx) {
-        return waitTaskHelper(client, args, ctx?.abort);
+        return executeTaskBoundOp(args, ctx, (c) => waitTaskHelper(c, args, ctx?.abort));
       },
     },
 
@@ -1732,6 +2075,7 @@ export function createTools(client) {
       args: {
         type: "object",
         properties: {
+          ...ACCOUNT_ARG_PROPERTY,
           task_id: {
             type: "string",
             description: "Combined task ID '<thread_id>:<run_id>' to cancel.",
@@ -1748,21 +2092,22 @@ export function createTools(client) {
         additionalProperties: false,
       },
       async execute(args = {}, ctx) {
-        const { task_id, thread_id, run_id } = parseTaskIdentifier(args);
-        const authMode =
-          client.isAccessKeyMode() && client.getCookieHeader() ? "cookie" : undefined;
-        const res = await client.post(
-          "/api/biz/v1/agent/cancel_run",
-          { thread_id, run_id },
-          { signal: ctx?.abort, authMode }
-        );
-        return {
-          task_id,
-          thread_id,
-          run_id,
-          canceled: true,
-          ...(res && typeof res === "object" ? res : {}),
-        };
+        return executeTaskBoundOp(args, ctx, async (c, { task_id, thread_id, run_id }) => {
+          const authMode =
+            c.isAccessKeyMode() && c.getCookieHeader() ? "cookie" : undefined;
+          const res = await c.post(
+            "/api/biz/v1/agent/cancel_run",
+            { thread_id, run_id },
+            { signal: ctx?.abort, authMode }
+          );
+          return {
+            task_id,
+            thread_id,
+            run_id,
+            canceled: true,
+            ...(res && typeof res === "object" ? res : {}),
+          };
+        });
       },
     },
   };

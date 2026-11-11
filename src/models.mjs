@@ -51,14 +51,19 @@ export function mapRatioCodes(codes) {
 }
 
 export const STANDARD_SEEDANCE_RATIOS = ["adaptive", "16:9", "21:9", "9:16", "1:1", "4:3", "3:4"];
+export const DEFAULT_ACCEPTED_IMAGE_FORMATS = ["jpg", "jpeg", "png", "webp", "bmp", "gif"];
+export const DEFAULT_MAX_IMAGE_BYTES = 30 * 1024 * 1024; // 30 MB
 
 // Complete static table of all 11 models from docs/API.md Section 3.2 & Section 7.2
+// (re-verified against live skill/get_available_model_list & agent/get_available_model_list)
 export const STATIC_VIDEO_MODELS = [
   {
     key: "Seedance_2.5_draft",
     name: "Seedance 2.5 Draft",
     abbreviated_name: "SD 2.5 Draft",
     disabled: false,
+    in_skill_api: true,
+    supports_seed: true,
     is_seedance: true,
     is_seedance_25: true,
     is_draft: true,
@@ -70,8 +75,11 @@ export const STATIC_VIDEO_MODELS = [
     ratios: STANDARD_SEEDANCE_RATIOS,
     default_ratio: "16:9",
     first_last_frame_support: { first_frame: true, last_frame: true },
-    reference_limits: { total: 50, image: 30, video: 10, audio: 10 },
-    creation_modes: ["reference_generation", "video_edit", "video_extend", "first_last_frame"],
+    reference_limits: { total: 50, image: 30, video: 10, audio: 0 },
+    creation_modes: ["reference_generation", "video_extend", "first_last_frame"],
+    max_image_bytes: DEFAULT_MAX_IMAGE_BYTES,
+    accepted_image_formats: DEFAULT_ACCEPTED_IMAGE_FORMATS,
+    ref_video_constraints: { min_sec: 2, max_sec: 30.2, max_total_sec: 30.2 },
     pricing_policy: "output_only",
     credits_per_second: { "480p": 9, default: 9 },
   },
@@ -80,6 +88,8 @@ export const STATIC_VIDEO_MODELS = [
     name: "Seedance 2.5",
     abbreviated_name: "SD 2.5",
     disabled: false,
+    in_skill_api: true,
+    supports_seed: true,
     is_seedance: true,
     is_seedance_25: true,
     is_draft: false,
@@ -93,7 +103,10 @@ export const STATIC_VIDEO_MODELS = [
     first_last_frame_support: { first_frame: true, last_frame: true },
     reference_limits: { total: 50, image: 30, video: 10, audio: 10 },
     creation_modes: ["reference_generation", "video_edit", "video_extend", "first_last_frame"],
-    pricing_policy: "output_only",
+    max_image_bytes: DEFAULT_MAX_IMAGE_BYTES,
+    accepted_image_formats: DEFAULT_ACCEPTED_IMAGE_FORMATS,
+    ref_video_constraints: { min_sec: 2, max_sec: 30.2, max_total_sec: 30.2 },
+    pricing_policy: "output_plus_reference",
     credits_per_second: { "480p": 12, "720p": 20, "1080p": 64, "4k": 99 },
   },
   {
@@ -101,6 +114,8 @@ export const STATIC_VIDEO_MODELS = [
     name: "Seedance 2.0 Fast VIP",
     abbreviated_name: "SD 2.0 Fast VIP",
     disabled: false,
+    in_skill_api: true,
+    supports_seed: true,
     is_seedance: true,
     is_seedance_25: false,
     is_draft: false,
@@ -114,7 +129,10 @@ export const STATIC_VIDEO_MODELS = [
     first_last_frame_support: { first_frame: true, last_frame: true },
     reference_limits: { total: 12, image: 9, video: 3, audio: 3 },
     creation_modes: ["reference_generation", "first_last_frame"],
-    pricing_policy: "output_only",
+    max_image_bytes: DEFAULT_MAX_IMAGE_BYTES,
+    accepted_image_formats: DEFAULT_ACCEPTED_IMAGE_FORMATS,
+    ref_video_constraints: { min_sec: 2, max_sec: 15.5, max_total_sec: 15.5 },
+    pricing_policy: "output_plus_reference",
     credits_per_second: { "480p": 3, "720p": 6 },
   },
   {
@@ -122,6 +140,8 @@ export const STATIC_VIDEO_MODELS = [
     name: "Seedance 2.0 VIP",
     abbreviated_name: "SD 2.0 VIP",
     disabled: false,
+    in_skill_api: true,
+    supports_seed: true,
     is_seedance: true,
     is_seedance_25: false,
     is_draft: false,
@@ -135,7 +155,10 @@ export const STATIC_VIDEO_MODELS = [
     first_last_frame_support: { first_frame: true, last_frame: true },
     reference_limits: { total: 12, image: 9, video: 3, audio: 3 },
     creation_modes: ["reference_generation", "first_last_frame"],
-    pricing_policy: "output_only",
+    max_image_bytes: DEFAULT_MAX_IMAGE_BYTES,
+    accepted_image_formats: DEFAULT_ACCEPTED_IMAGE_FORMATS,
+    ref_video_constraints: { min_sec: 2, max_sec: 15.5, max_total_sec: 15.5 },
+    pricing_policy: "output_plus_reference",
     credits_per_second: { "480p": 8, "720p": 14, "1080p": 33, "4k": 80 },
   },
   {
@@ -143,6 +166,8 @@ export const STATIC_VIDEO_MODELS = [
     name: "Seedance 2.0 Mini 体验版",
     abbreviated_name: "2.0 Mini 体验版",
     disabled: false,
+    in_skill_api: true,
+    supports_seed: true,
     is_seedance: true,
     is_seedance_25: false,
     is_draft: false,
@@ -156,6 +181,9 @@ export const STATIC_VIDEO_MODELS = [
     first_last_frame_support: { first_frame: true, last_frame: true },
     reference_limits: { total: 12, image: 9, video: 3, audio: 3 },
     creation_modes: ["reference_generation", "first_last_frame"],
+    max_image_bytes: DEFAULT_MAX_IMAGE_BYTES,
+    accepted_image_formats: DEFAULT_ACCEPTED_IMAGE_FORMATS,
+    ref_video_constraints: { min_sec: 2, max_sec: 15.5, max_total_sec: 15.5 },
     pricing_policy: "output_only",
     credits_per_second: { "720p": 4, default: 4 },
   },
@@ -164,6 +192,8 @@ export const STATIC_VIDEO_MODELS = [
     name: "Seedance 2.0 Mini",
     abbreviated_name: "SD 2.0 Mini",
     disabled: false,
+    in_skill_api: true,
+    supports_seed: true,
     is_seedance: true,
     is_seedance_25: false,
     is_draft: false,
@@ -177,7 +207,10 @@ export const STATIC_VIDEO_MODELS = [
     first_last_frame_support: { first_frame: true, last_frame: true },
     reference_limits: { total: 12, image: 9, video: 3, audio: 3 },
     creation_modes: ["reference_generation", "first_last_frame"],
-    pricing_policy: "output_only",
+    max_image_bytes: DEFAULT_MAX_IMAGE_BYTES,
+    accepted_image_formats: DEFAULT_ACCEPTED_IMAGE_FORMATS,
+    ref_video_constraints: { min_sec: 2, max_sec: 15.5, max_total_sec: 15.5 },
+    pricing_policy: "output_plus_reference",
     credits_per_second: { "720p": 6, default: 6 },
   },
   {
@@ -185,6 +218,8 @@ export const STATIC_VIDEO_MODELS = [
     name: "Wan 3.0",
     abbreviated_name: "Wan 3.0",
     disabled: false,
+    in_skill_api: true,
+    supports_seed: true,
     is_seedance: false,
     is_seedance_25: false,
     is_draft: false,
@@ -198,7 +233,15 @@ export const STATIC_VIDEO_MODELS = [
     first_last_frame_support: { first_frame: true, last_frame: true },
     reference_limits: { total: 15, image: 10, video: 5, audio: 0 },
     creation_modes: ["reference_generation", "first_last_frame"],
-    pricing_policy: "output_only",
+    max_image_bytes: 20 * 1024 * 1024, // 20 MB online limit on wan3.0
+    accepted_image_formats: ["jpg", "jpeg", "png", "bmp", "webp"], // no gif/heic
+    ref_video_constraints: {
+      min_sec: 1,
+      max_sec: 15,
+      max_total_sec: 15,
+      max_input_plus_output_sec: 30,
+    },
+    pricing_policy: "output_plus_reference",
     credits_per_second: { "480p": 7, "720p": 14, "1080p": 33 },
   },
   {
@@ -206,6 +249,8 @@ export const STATIC_VIDEO_MODELS = [
     name: "HappyHorse 1.1",
     abbreviated_name: "HappyHorse 1.1",
     disabled: false,
+    in_skill_api: true,
+    supports_seed: false,
     is_seedance: false,
     is_seedance_25: false,
     is_draft: false,
@@ -219,6 +264,8 @@ export const STATIC_VIDEO_MODELS = [
     first_last_frame_support: { first_frame: false, last_frame: false },
     reference_limits: { total: 9, image: 9, video: 0, audio: 0 },
     creation_modes: ["reference_generation"],
+    max_image_bytes: DEFAULT_MAX_IMAGE_BYTES,
+    accepted_image_formats: ["jpg", "jpeg", "png", "webp", "heic", "heif"], // no bmp/gif
     pricing_policy: "output_only",
     credits_per_second: { "720p": 14, "1080p": 18 },
   },
@@ -227,6 +274,8 @@ export const STATIC_VIDEO_MODELS = [
     name: "Seedance 2.0",
     abbreviated_name: "SD 2.0",
     disabled: false,
+    in_skill_api: false,
+    supports_seed: true,
     is_seedance: true,
     is_seedance_25: false,
     is_draft: false,
@@ -240,6 +289,9 @@ export const STATIC_VIDEO_MODELS = [
     first_last_frame_support: { first_frame: true, last_frame: true },
     reference_limits: { total: 12, image: 9, video: 3, audio: 0 },
     creation_modes: ["reference_generation", "first_last_frame"],
+    max_image_bytes: DEFAULT_MAX_IMAGE_BYTES,
+    accepted_image_formats: DEFAULT_ACCEPTED_IMAGE_FORMATS,
+    ref_video_constraints: { min_sec: 2, max_sec: 15.5, max_total_sec: 15.5 },
     pricing_policy: "output_plus_reference",
     credits_per_second: { "480p": 7, "720p": 8 },
   },
@@ -248,6 +300,8 @@ export const STATIC_VIDEO_MODELS = [
     name: "Seedance 2.0 Fast",
     abbreviated_name: "SD 2.0 Fast",
     disabled: false,
+    in_skill_api: false,
+    supports_seed: true,
     is_seedance: true,
     is_seedance_25: false,
     is_draft: false,
@@ -261,6 +315,9 @@ export const STATIC_VIDEO_MODELS = [
     first_last_frame_support: { first_frame: true, last_frame: true },
     reference_limits: { total: 12, image: 9, video: 3, audio: 0 },
     creation_modes: ["reference_generation", "first_last_frame"],
+    max_image_bytes: DEFAULT_MAX_IMAGE_BYTES,
+    accepted_image_formats: DEFAULT_ACCEPTED_IMAGE_FORMATS,
+    ref_video_constraints: { min_sec: 2, max_sec: 15.5, max_total_sec: 15.5 },
     pricing_policy: "output_plus_reference",
     credits_per_second: { "720p": 5, default: 5 },
   },
@@ -269,6 +326,8 @@ export const STATIC_VIDEO_MODELS = [
     name: "Seedance 1.0 Fast",
     abbreviated_name: "SD 1.0 Fast",
     disabled: false,
+    in_skill_api: false,
+    supports_seed: false,
     is_seedance: true,
     is_seedance_25: false,
     is_draft: false,
@@ -282,6 +341,8 @@ export const STATIC_VIDEO_MODELS = [
     first_last_frame_support: { first_frame: true, last_frame: false },
     reference_limits: { total: 1, image: 1, video: 0, audio: 0 },
     creation_modes: ["first_last_frame"],
+    max_image_bytes: DEFAULT_MAX_IMAGE_BYTES,
+    accepted_image_formats: DEFAULT_ACCEPTED_IMAGE_FORMATS,
     pricing_policy: "output_only",
     credits_per_second: { "720p": 2, "1080p": 4 },
   },
@@ -329,6 +390,8 @@ export function formatStaticModelForList(model) {
     key: model.key,
     name: model.name,
     disabled: Boolean(model.disabled),
+    in_skill_api: model.in_skill_api !== false,
+    supports_seed: model.supports_seed !== false,
     durations: {
       min: model.durations.min,
       max: model.durations.max,
@@ -339,6 +402,7 @@ export function formatStaticModelForList(model) {
     first_last_frame_support: { ...model.first_last_frame_support },
     reference_limits: { ...model.reference_limits },
     creation_modes: [...model.creation_modes],
+    pricing_policy: model.pricing_policy || "output_only",
     credits_per_second: { ...model.credits_per_second },
   };
 }
@@ -359,11 +423,33 @@ export function normalizeLiveModelItem(raw) {
     rc?.min_value ?? rc?.min ?? raw.durations?.min ?? staticFallback?.durations?.min ?? 4;
   const durMax =
     rc?.max_value ?? rc?.max ?? raw.durations?.max ?? staticFallback?.durations?.max ?? 15;
+
+  let exactPresetDefault;
+  if (
+    typeof raw.default_duration_value === "number" &&
+    Array.isArray(raw.supported_duration_list)
+  ) {
+    const preset = raw.supported_duration_list.find(
+      (item) => item && item.value === raw.default_duration_value
+    );
+    if (preset && /^\d+s$/i.test(String(preset.label || "").trim())) {
+      exactPresetDefault = Number.parseInt(String(preset.label).trim(), 10);
+    }
+  }
+
   const durDef =
+    exactPresetDefault ??
     (durDim?.default_value !== undefined ? Number(durDim.default_value) : undefined) ??
     raw.durations?.default ??
     staticFallback?.durations?.default ??
     10;
+
+  const supportsSeed =
+    dims.length > 0
+      ? dims.some((d) => d && d.key === "seed")
+      : staticFallback
+      ? staticFallback.supports_seed !== false
+      : true;
 
   const resDim = dims.find((d) => d && d.key === "resolution");
   const rawResOptions = Array.isArray(resDim?.option_list)
@@ -429,10 +515,42 @@ export function normalizeLiveModelItem(raw) {
       ? ["reference_generation", "first_last_frame"]
       : ["reference_generation"];
 
+  const pricingRuleText = String(raw.pricing_rule?.content || "");
+  const pricingPolicy =
+    videoLimit > 0 && pricingRuleText.includes("输入参考视频时长计入总时长")
+      ? "output_plus_reference"
+      : staticFallback?.pricing_policy ?? "output_only";
+
+  const acceptedImageFormats = Array.isArray(raw.image_material_accepted_extensions)
+    ? raw.image_material_accepted_extensions.map((ext) => String(ext).toLowerCase())
+    : staticFallback?.accepted_image_formats;
+
+  const maxImageBytes =
+    typeof raw.max_image_size === "number" && raw.max_image_size > 0
+      ? raw.max_image_size
+      : staticFallback?.max_image_bytes;
+
+  const refVideoConstraints =
+    videoLimit > 0 &&
+    (raw.min_video_duration ||
+      raw.max_video_duration ||
+      raw.max_total_video_duration ||
+      raw.max_input_output_video_duration)
+      ? {
+          ...(raw.min_video_duration ? { min_sec: raw.min_video_duration / 1000 } : {}),
+          ...(raw.max_video_duration ? { max_sec: raw.max_video_duration / 1000 } : {}),
+          ...(raw.max_total_video_duration ? { max_total_sec: raw.max_total_video_duration / 1000 } : {}),
+          ...(raw.max_input_output_video_duration
+            ? { max_input_plus_output_sec: raw.max_input_output_video_duration / 1000 }
+            : {}),
+        }
+      : staticFallback?.ref_video_constraints;
+
   return {
     key,
     name: raw.name ?? staticFallback?.name ?? key,
     disabled: Boolean(raw.disabled),
+    supports_seed: supportsSeed,
     durations: {
       min: Number(durMin),
       max: Number(durMax),
@@ -451,6 +569,10 @@ export function normalizeLiveModelItem(raw) {
       audio: audioLimit,
     },
     creation_modes: creationModes,
+    pricing_policy: pricingPolicy,
+    ...(acceptedImageFormats ? { accepted_image_formats: acceptedImageFormats } : {}),
+    ...(maxImageBytes ? { max_image_bytes: maxImageBytes } : {}),
+    ...(refVideoConstraints ? { ref_video_constraints: refVideoConstraints } : {}),
     ...(staticFallback?.credits_per_second
       ? { credits_per_second: { ...staticFallback.credits_per_second } }
       : {}),
@@ -468,6 +590,7 @@ export function buildSchemaFromLiveModel(liveNormalized) {
     key: liveNormalized.key,
     name: liveNormalized.name || liveNormalized.key,
     disabled: Boolean(liveNormalized.disabled),
+    supports_seed: liveNormalized.supports_seed !== false,
     is_seedance: liveNormalized.key.toLowerCase().includes("seedance"),
     is_seedance_25: is25,
     is_draft: isDraft,
@@ -500,7 +623,10 @@ export function buildSchemaFromLiveModel(liveNormalized) {
       audio: 3,
     },
     creation_modes: liveNormalized.creation_modes ?? ["reference_generation", "first_last_frame"],
-    pricing_policy: "output_only",
+    max_image_bytes: liveNormalized.max_image_bytes ?? DEFAULT_MAX_IMAGE_BYTES,
+    accepted_image_formats: liveNormalized.accepted_image_formats ?? DEFAULT_ACCEPTED_IMAGE_FORMATS,
+    ref_video_constraints: liveNormalized.ref_video_constraints,
+    pricing_policy: liveNormalized.pricing_policy ?? "output_only",
     credits_per_second: liveNormalized.credits_per_second ?? {},
   };
 }
@@ -691,9 +817,20 @@ export function resolveAndValidateVideoParams(
     reference_audios: refAudios,
   });
 
-  if ((mode === "edit" || mode === "extend") && !schema.is_seedance_25) {
+  const creationModes = Array.isArray(schema.creation_modes) ? schema.creation_modes : [];
+  if (mode === "edit" && (!schema.is_seedance_25 || !creationModes.includes("video_edit"))) {
     throw new Error(
-      `Invalid 'mode' ("${mode}") for model "${modelKey}": video edit and extend modes are only supported on Seedance_2.5 and Seedance_2.5_draft.`
+      `Invalid 'mode' ("edit") for model "${modelKey}": video edit mode is only supported on Seedance_2.5.`
+    );
+  }
+  if (mode === "extend" && (!schema.is_seedance_25 || !creationModes.includes("video_extend"))) {
+    throw new Error(
+      `Invalid 'mode' ("extend") for model "${modelKey}": video extend mode is only supported on Seedance_2.5 and Seedance_2.5_draft.`
+    );
+  }
+  if (mode === "reference" && !creationModes.includes("reference_generation")) {
+    throw new Error(
+      `Invalid 'mode' ("reference") for model "${modelKey}": reference generation is not supported on "${modelKey}". Allowed modes: t2v${creationModes.length ? `, ${creationModes.join(", ")}` : ""}.`
     );
   }
 
@@ -747,6 +884,56 @@ export function resolveAndValidateVideoParams(
     );
   }
 
+  // Validate model-specific image format & byte-size constraints when inspectable
+  const acceptedFormats = Array.isArray(schema.accepted_image_formats)
+    ? new Set(
+        schema.accepted_image_formats.flatMap((f) =>
+          f === "jpg" || f === "jpeg" ? ["jpg", "jpeg"] : [String(f).toLowerCase()]
+        )
+      )
+    : null;
+  const maxImgBytes = Number(schema.max_image_bytes) || DEFAULT_MAX_IMAGE_BYTES;
+  const checkImageItem = (item, label) => {
+    if (!item) return;
+    if (typeof item === "object") {
+      if (Number(item.size_bytes) > maxImgBytes) {
+        const mb = Math.round(maxImgBytes / (1024 * 1024));
+        throw new Error(
+          `Invalid '${label}' for model "${modelKey}": image size (${item.size_bytes} bytes) exceeds the ${mb} MB limit.`
+        );
+      }
+      if (acceptedFormats && typeof item.format === "string" && item.format.trim()) {
+        const fmt = item.format.trim().toLowerCase();
+        if (!acceptedFormats.has(fmt)) {
+          throw new Error(
+            `Invalid '${label}' format ("${fmt}") for model "${modelKey}". Allowed image formats: ${schema.accepted_image_formats.join(", ")}.`
+          );
+        }
+      }
+      return;
+    }
+    if (acceptedFormats && typeof item === "string" && !/^data:/i.test(item)) {
+      const cleanPath = item.split("?")[0].split("#")[0];
+      const dotIdx = cleanPath.lastIndexOf(".");
+      if (dotIdx > 0 && dotIdx > cleanPath.lastIndexOf("/")) {
+        const ext = cleanPath.slice(dotIdx + 1).toLowerCase();
+        if (ext && ["jpg", "jpeg", "png", "webp", "bmp", "gif", "heic", "heif", "avif", "svg", "tiff"].includes(ext)) {
+          if (!acceptedFormats.has(ext)) {
+            throw new Error(
+              `Invalid '${label}' format (".${ext}") for model "${modelKey}". Allowed image formats: ${schema.accepted_image_formats.join(", ")}.`
+            );
+          }
+        }
+      }
+    }
+  };
+  if (mode === "first_last_frame") {
+    checkImageItem(firstFrame, "first_frame");
+    checkImageItem(lastFrame, "last_frame");
+  } else {
+    refImages.forEach((img, i) => checkImageItem(img, `reference_images[${i}]`));
+  }
+
   // 7. Validate duration
   let duration;
   if (args.duration === undefined || args.duration === null) {
@@ -764,6 +951,52 @@ export function resolveAndValidateVideoParams(
       );
     } else {
       duration = parsedDur;
+    }
+  }
+
+  // Validate reference video duration constraints (e.g. wan3.0 single/total <= 15s and input+output <= 30s)
+  const vidConstraints = schema.ref_video_constraints;
+  if (vidConstraints) {
+    let knownTotalRefSec = 0;
+    for (let i = 0; i < refVideos.length; i += 1) {
+      const v = refVideos[i];
+      if (v && typeof v === "object" && Number(v.duration_ms) > 0) {
+        const sec = Number(v.duration_ms) / 1000;
+        if (vidConstraints.min_sec && sec < vidConstraints.min_sec) {
+          throw new Error(
+            `Invalid 'reference_videos[${i}]' duration (${sec}s) for model "${modelKey}": minimum allowed is ${vidConstraints.min_sec}s.`
+          );
+        }
+        if (vidConstraints.max_sec && sec > vidConstraints.max_sec) {
+          throw new Error(
+            `Invalid 'reference_videos[${i}]' duration (${sec}s) for model "${modelKey}": maximum allowed is ${vidConstraints.max_sec}s.`
+          );
+        }
+        knownTotalRefSec += sec;
+      }
+    }
+    const explicitRefSec =
+      args.ref_video_seconds !== undefined && args.ref_video_seconds !== null
+        ? Number(args.ref_video_seconds)
+        : 0;
+    const effectiveRefSec = explicitRefSec > 0 ? explicitRefSec : knownTotalRefSec;
+    if (effectiveRefSec > 0) {
+      if (vidConstraints.max_total_sec && effectiveRefSec > vidConstraints.max_total_sec) {
+        throw new Error(
+          `Total reference video duration (${effectiveRefSec}s) exceeds maximum allowed (${vidConstraints.max_total_sec}s) for model "${modelKey}".`
+        );
+      }
+      if (
+        vidConstraints.max_input_plus_output_sec &&
+        duration > 0 &&
+        effectiveRefSec + duration > vidConstraints.max_input_plus_output_sec
+      ) {
+        throw new Error(
+          `Combined reference video duration (${effectiveRefSec}s) + output duration (${duration}s) = ${
+            effectiveRefSec + duration
+          }s exceeds the ${vidConstraints.max_input_plus_output_sec}s limit for model "${modelKey}".`
+        );
+      }
     }
   }
 
@@ -805,6 +1038,9 @@ export function resolveAndValidateVideoParams(
   // 10. Validate seed
   let seed;
   if (args.seed !== undefined && args.seed !== null) {
+    if (schema.supports_seed === false) {
+      throw new Error(`Invalid 'seed' (${args.seed}) for model "${modelKey}": this model does not support 'seed'.`);
+    }
     const parsedSeed = Number(args.seed);
     if (!Number.isInteger(parsedSeed)) {
       throw new Error(`Invalid 'seed' (${args.seed}): must be an integer.`);
